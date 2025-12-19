@@ -4,16 +4,20 @@ Provides easy theme switching and management.
 """
 
 from config.constants_colors import DarkTheme, CurrentTheme
+from config.fungen_design import SpotifyTheme, FunGenTheme
 
 
 class ThemeManager:
     """Manages color themes for the application."""
-    
+
     def __init__(self):
-        self._current_theme = DarkTheme
+        # Default to Spotify theme for the new design
+        self._current_theme = SpotifyTheme
         self._available_themes = {
             'dark': DarkTheme,
+            'spotify': SpotifyTheme,  # New Spotify-inspired theme
         }
+        self._imgui_theme_applied = False
     
     @property
     def current_theme(self):
@@ -78,6 +82,19 @@ class ThemeManager:
         # so they'll update automatically
         pass
 
+    def apply_imgui_theme(self):
+        """
+        Apply the ImGui styling for the current theme.
+        Should be called after ImGui context is created.
+        """
+        if self._current_theme == SpotifyTheme or self._current_theme.__name__ == 'SpotifyTheme':
+            FunGenTheme.apply()
+            self._imgui_theme_applied = True
+
+    def is_spotify_theme(self) -> bool:
+        """Check if current theme is the Spotify theme."""
+        return self._current_theme == SpotifyTheme
+
 
 # Global theme manager instance
 theme_manager = ThemeManager()
@@ -103,4 +120,17 @@ def get_current_theme():
 
 def get_available_themes():
     """Get list of available theme names."""
-    return theme_manager.available_themes 
+    return theme_manager.available_themes
+
+
+def apply_imgui_theme():
+    """
+    Apply ImGui styling for the current theme.
+    Call this after ImGui context is created.
+    """
+    theme_manager.apply_imgui_theme()
+
+
+def is_spotify_theme() -> bool:
+    """Check if current theme is the Spotify theme."""
+    return theme_manager.is_spotify_theme()

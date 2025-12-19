@@ -87,30 +87,33 @@ class ProcessingSpeedMode(Enum):
 
 
 ####################################################################################################
-# UI COLORS (Toolbar button states)
+# UI COLORS (Toolbar button states) - Spotify-inspired palette
 ####################################################################################################
 # Button color scheme for different states
 # Format: (R, G, B, A) normalized to 0.0-1.0 range
 
-# Green: For active "running" states (Play when playing, Start Tracking when tracking)
-TOOLBAR_BUTTON_GREEN_ACTIVE = (0.0, 0.7, 0.0, 0.7)
-TOOLBAR_BUTTON_GREEN_HOVERED = (0.0, 0.85, 0.0, 0.85)
-TOOLBAR_BUTTON_GREEN_PRESSED = (0.0, 0.6, 0.0, 0.9)
+# Green: Spotify Green for active "running" states (Play, Tracking, Connected)
+# #1db954 = (29, 185, 84) -> (0.114, 0.725, 0.329)
+TOOLBAR_BUTTON_GREEN_ACTIVE = (0.114, 0.725, 0.329, 0.85)
+TOOLBAR_BUTTON_GREEN_HOVERED = (0.141, 0.800, 0.380, 0.95)
+TOOLBAR_BUTTON_GREEN_PRESSED = (0.090, 0.627, 0.263, 1.0)
 
-# Blue: For toggle features (Mode, Show Video, Speed modes, Timeline toggles, etc.)
-TOOLBAR_BUTTON_BLUE_ACTIVE = (0.3, 0.5, 0.7, 0.8)
-TOOLBAR_BUTTON_BLUE_HOVERED = (0.4, 0.6, 0.8, 0.9)
-TOOLBAR_BUTTON_BLUE_PRESSED = (0.2, 0.4, 0.6, 1.0)
+# Blue: For toggle features (Mode, Show Video, Speed modes, Timeline toggles)
+# Subtle blue that complements green accent
+TOOLBAR_BUTTON_BLUE_ACTIVE = (0.2, 0.45, 0.7, 0.75)
+TOOLBAR_BUTTON_BLUE_HOVERED = (0.25, 0.55, 0.8, 0.85)
+TOOLBAR_BUTTON_BLUE_PRESSED = (0.15, 0.4, 0.6, 0.95)
 
-# Red: For "stop" or "inactive but important" states
-TOOLBAR_BUTTON_RED_ACTIVE = (0.7, 0.0, 0.0, 0.7)
-TOOLBAR_BUTTON_RED_HOVERED = (0.85, 0.0, 0.0, 0.85)
-TOOLBAR_BUTTON_RED_PRESSED = (0.6, 0.0, 0.0, 0.9)
+# Red: For "stop" or error states - slightly muted for Spotify feel
+TOOLBAR_BUTTON_RED_ACTIVE = (0.85, 0.25, 0.2, 0.8)
+TOOLBAR_BUTTON_RED_HOVERED = (0.95, 0.35, 0.3, 0.9)
+TOOLBAR_BUTTON_RED_PRESSED = (0.75, 0.2, 0.15, 1.0)
 
-# Default: Normal button state (inactive)
-TOOLBAR_BUTTON_DEFAULT = (0.2, 0.2, 0.2, 0.5)
-TOOLBAR_BUTTON_DEFAULT_HOVERED = (0.3, 0.3, 0.3, 0.7)
-TOOLBAR_BUTTON_DEFAULT_PRESSED = (0.15, 0.15, 0.15, 0.9)
+# Default: Spotify dark surface colors
+# #282828 = (40, 40, 40) -> (0.157, 0.157, 0.157)
+TOOLBAR_BUTTON_DEFAULT = (0.157, 0.157, 0.157, 0.7)
+TOOLBAR_BUTTON_DEFAULT_HOVERED = (0.243, 0.243, 0.243, 0.85)
+TOOLBAR_BUTTON_DEFAULT_PRESSED = (0.114, 0.114, 0.114, 0.95)
 
 
 # TrackerMode enum removed - now using dynamic tracker discovery system

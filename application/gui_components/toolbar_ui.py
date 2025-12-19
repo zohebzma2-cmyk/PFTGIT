@@ -109,23 +109,30 @@ class ToolbarUI:
 
         imgui.begin("##MainToolbar", flags=flags)
 
-        # Draw background manually
+        # Draw background manually - Spotify dark surface color (#181818)
         draw_list = imgui.get_window_draw_list()
         win_pos = imgui.get_window_position()
         win_size = imgui.get_window_size()
-        bg_color = imgui.get_color_u32_rgba(0.15, 0.15, 0.15, 0.95)
+        bg_color = imgui.get_color_u32_rgba(0.094, 0.094, 0.094, 0.98)
         draw_list.add_rect_filled(
             win_pos[0], win_pos[1],
             win_pos[0] + win_size[0], win_pos[1] + win_size[1],
             bg_color
         )
+        # Bottom border line for definition
+        border_color = imgui.get_color_u32_rgba(0.157, 0.157, 0.157, 1.0)
+        draw_list.add_line(
+            win_pos[0], win_pos[1] + win_size[1],
+            win_pos[0] + win_size[0], win_pos[1] + win_size[1],
+            border_color, 1.0
+        )
 
-        # Style for toolbar buttons
+        # Style for toolbar buttons - Spotify-inspired colors
         imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (self._button_padding, self._button_padding))
         imgui.push_style_var(imgui.STYLE_ITEM_SPACING, (8, 4))
-        imgui.push_style_color(imgui.COLOR_BUTTON, 0.2, 0.2, 0.2, 0.5)
-        imgui.push_style_color(imgui.COLOR_BUTTON_HOVERED, 0.3, 0.3, 0.3, 0.7)
-        imgui.push_style_color(imgui.COLOR_BUTTON_ACTIVE, 0.15, 0.15, 0.15, 0.9)
+        imgui.push_style_color(imgui.COLOR_BUTTON, 0.157, 0.157, 0.157, 0.7)
+        imgui.push_style_color(imgui.COLOR_BUTTON_HOVERED, 0.243, 0.243, 0.243, 0.85)
+        imgui.push_style_color(imgui.COLOR_BUTTON_ACTIVE, 0.114, 0.725, 0.329, 0.95)
 
         # Add small padding at start
         imgui.dummy(8, 0)
@@ -216,8 +223,8 @@ class ToolbarUI:
         # Separator should span full height including label area
         height = self._label_height + self._label_spacing + self._icon_size + (self._button_padding * 2)
 
-        # Draw vertical line
-        color = imgui.get_color_u32_rgba(0.5, 0.5, 0.5, 0.5)
+        # Draw vertical line - Spotify border color (#282828)
+        color = imgui.get_color_u32_rgba(0.157, 0.157, 0.157, 0.8)
         draw_list.add_line(
             cursor_pos[0], cursor_pos[1],
             cursor_pos[0], cursor_pos[1] + height,
@@ -274,10 +281,10 @@ class ToolbarUI:
             window_pos = imgui.get_window_position()
             label_y = window_pos[1] + 4  # Small top padding
 
-            # Render centered label text
-            imgui.push_style_color(imgui.COLOR_TEXT, 0.55, 0.55, 0.55, 1.0)
+            # Render centered label text - Spotify muted text color (#727272)
+            imgui.push_style_color(imgui.COLOR_TEXT, 0.447, 0.447, 0.447, 1.0)
             draw_list.add_text(window_pos[0] + label_x, label_y,
-                             imgui.get_color_u32_rgba(0.55, 0.55, 0.55, 1.0),
+                             imgui.get_color_u32_rgba(0.447, 0.447, 0.447, 1.0),
                              label_text)
             imgui.pop_style_color()
 

@@ -591,9 +591,10 @@ class GUI:
 
         imgui.create_context()
         self.impl = GlfwRenderer(self.window)
-        style = imgui.get_style()
-        style.window_rounding = 5.0
-        style.frame_rounding = 3.0
+
+        # Apply FunGen design system theme
+        from config.theme_manager import apply_imgui_theme
+        apply_imgui_theme()
 
         self.frame_texture_id = gl.glGenTextures(1)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.frame_texture_id)
