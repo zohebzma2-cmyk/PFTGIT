@@ -8,10 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from app.config import settings
-from app.routers import projects, videos, funscripts, processing, devices
+from app.routers import auth, projects, videos, funscripts, processing, devices
 from app.websocket import ConnectionManager
+from app.models.database import init_db
+from app.services.processing_service import ProcessingService
+from app.services.video_service import VideoService
 
 # Configure logging
 logging.basicConfig(
@@ -23,13 +27,36 @@ logger = logging.getLogger(__name__)
 # WebSocket connection manager
 ws_manager = ConnectionManager()
 
+# Services (initialized in lifespan)
+processing_service: ProcessingService = None
+video_service: VideoService = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
+    global processing_service, video_service
+
     # Startup
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Debug mode: {settings.debug}")
+
+    # Initialize database
+    logger.info("Initializing database...")
+    await init_db()
+    logger.info("Database initialized")
+
+    # Initialize services
+    processing_service = ProcessingService(
+        upload_dir=settings.upload_dir,
+        output_dir=settings.output_dir
+    )
+    video_service = VideoService(upload_dir=settings.upload_dir)
+
+    # Store services in app state for access in routes
+    app.state.processing_service = processing_service
+    app.state.video_service = video_service
+    app.state.ws_manager = ws_manager
 
     yield
 
@@ -55,6 +82,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(projects.router, prefix="/api/projects", tags=["Projects"])
 app.include_router(videos.router, prefix="/api/videos", tags=["Videos"])
 app.include_router(funscripts.router, prefix="/api/funscripts", tags=["Funscripts"])
@@ -62,6 +90,7 @@ app.include_router(processing.router, prefix="/api/processing", tags=["Processin
 app.include_router(devices.router, prefix="/api/devices", tags=["Devices"])
 
 # Mount static files for uploads
+os.makedirs(settings.upload_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 
@@ -73,6 +102,14 @@ async def root():
         "version": settings.app_version,
         "status": "running",
         "docs": "/docs",
+        "endpoints": {
+            "auth": "/api/auth",
+            "projects": "/api/projects",
+            "videos": "/api/videos",
+            "funscripts": "/api/funscripts",
+            "processing": "/api/processing",
+            "devices": "/api/devices",
+        }
     }
 
 
