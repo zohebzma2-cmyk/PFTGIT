@@ -4,6 +4,7 @@ import platform
 import imgui
 from config.element_group_colors import MenuColors
 from application.utils import get_logo_texture_manager
+from config.theme_manager import theme_manager, set_theme, is_spotify_theme
 
 def _center_popup(width, height):
     mv = imgui.get_main_viewport()
@@ -626,6 +627,9 @@ class MainMenu:
             # Layout submenu
             self._render_layout_submenu(app_state)
 
+            # Theme submenu
+            self._render_theme_submenu()
+
             # Panels submenu (floating mode only) - right after Layout
             self._render_panels_submenu(app_state)
 
@@ -704,6 +708,33 @@ class MainMenu:
                     app_state.ui_layout_mode = "floating"
                     app_state.just_switched_to_floating = True
                     pm.project_dirty = True
+
+            imgui.end_menu()
+
+    def _render_theme_submenu(self):
+        """Render theme selection submenu."""
+        settings = self.app.app_settings
+        if imgui.begin_menu("Theme"):
+            current_is_spotify = is_spotify_theme()
+
+            # Spotify Dark theme (new design)
+            if _radio_line("Spotify Dark (New)", current_is_spotify):
+                if not current_is_spotify:
+                    set_theme('spotify')
+                    settings.set('ui_theme', 'spotify')
+                    # Re-apply ImGui theme
+                    theme_manager.apply_imgui_theme()
+                    self.app.logger.info("Theme changed to Spotify Dark", extra={"status_message": True})
+
+            # Classic Dark theme
+            if _radio_line("Classic Dark", not current_is_spotify):
+                if current_is_spotify:
+                    set_theme('dark')
+                    settings.set('ui_theme', 'dark')
+                    self.app.logger.info("Theme changed to Classic Dark", extra={"status_message": True})
+
+            imgui.separator()
+            imgui.text_disabled("Restart may be needed for full effect")
 
             imgui.end_menu()
 

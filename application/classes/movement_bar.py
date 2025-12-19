@@ -1,6 +1,6 @@
 import imgui
 import numpy as np
-from config.element_group_colors import LRDialColors
+from config.element_group_colors import LRDialColors, FloatingWidgetColors
 
 
 class MovementBarWindow:
@@ -32,6 +32,14 @@ class MovementBarWindow:
         imgui.set_next_window_size(*app_state.lr_dial_window_size, condition=imgui.ONCE)
         imgui.set_next_window_position(*app_state.lr_dial_window_pos, condition=imgui.ONCE)
 
+        # Apply Spotify-inspired floating widget styling
+        imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, *FloatingWidgetColors.BACKGROUND)
+        imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND, *FloatingWidgetColors.BACKGROUND)
+        imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND_ACTIVE, 0.114, 0.725, 0.329, 0.7)  # Spotify green
+        imgui.push_style_color(imgui.COLOR_BORDER, *FloatingWidgetColors.BORDER)
+        imgui.push_style_var(imgui.STYLE_WINDOW_ROUNDING, 8.0)
+        imgui.push_style_var(imgui.STYLE_WINDOW_BORDER_SIZE, 1.0)
+
         window_flags = imgui.WINDOW_NO_SCROLLBAR
 
         opened_state, new_show_state = imgui.begin(
@@ -47,6 +55,8 @@ class MovementBarWindow:
 
         if not opened_state:  # If window is not visible
             imgui.end()
+            imgui.pop_style_var(2)
+            imgui.pop_style_color(4)
             return
 
         # Update app_state with current window position and size if changed by user
@@ -79,6 +89,8 @@ class MovementBarWindow:
         if drawable_width < 80 or drawable_height < 120:  # Minimum for bar display
             imgui.text("Too small")
             imgui.end()
+            imgui.pop_style_var(2)
+            imgui.pop_style_color(4)
             return
 
         # Get current funscript values from app_state (same as gauge windows)
@@ -173,3 +185,5 @@ class MovementBarWindow:
         # Clean interface - no text needed
 
         imgui.end()
+        imgui.pop_style_var(2)
+        imgui.pop_style_color(4)

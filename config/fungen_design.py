@@ -1224,7 +1224,7 @@ class FunGenTheme:
         style.window_rounding = 0
         style.child_rounding = FunGenTheme.ROUNDING_SM
         style.frame_rounding = FunGenTheme.ROUNDING_SM
-        style.popup_rounding = FunGenTheme.ROUNDING_SM
+        style.popup_rounding = FunGenTheme.ROUNDING_LG  # More rounded modals/popups
         style.scrollbar_rounding = FunGenTheme.ROUNDING_SM
         style.grab_rounding = FunGenTheme.ROUNDING_SM
         style.tab_rounding = FunGenTheme.ROUNDING_SM
@@ -1343,6 +1343,28 @@ class FunGenTheme:
     @staticmethod
     def pop_danger_button_style():
         """Pop danger button style."""
+        imgui.pop_style_color(4)
+
+    @staticmethod
+    def push_modal_style():
+        """
+        Push Spotify-inspired modal dialog styling.
+
+        Use before imgui.begin_popup_modal() or imgui.begin().
+        Call pop_modal_style() after imgui.end().
+        """
+        imgui.push_style_color(imgui.COLOR_POPUP_BACKGROUND, *Colors.BG_SURFACE)
+        imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND, *Colors.BG_ELEVATED)
+        imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND_ACTIVE, *Colors.GREEN_DIM)
+        imgui.push_style_color(imgui.COLOR_BORDER, *Colors.BORDER_LIGHT)
+        imgui.push_style_var(imgui.STYLE_WINDOW_ROUNDING, FunGenTheme.ROUNDING_LG)
+        imgui.push_style_var(imgui.STYLE_WINDOW_BORDER_SIZE, 1.0)
+        imgui.push_style_var(imgui.STYLE_WINDOW_PADDING, (16, 16))
+
+    @staticmethod
+    def pop_modal_style():
+        """Pop modal dialog styling."""
+        imgui.pop_style_var(3)
         imgui.pop_style_color(4)
 
 

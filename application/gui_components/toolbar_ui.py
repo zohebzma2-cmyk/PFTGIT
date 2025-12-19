@@ -297,18 +297,21 @@ class ToolbarUI:
         current_mode = getattr(app_state, 'ui_view_mode', 'simple')
         is_expert = (current_mode == 'expert')
 
-        # Tooltip text
+        # Select icon and tooltip based on current mode
+        # Show gear icon when in expert mode, star icon when in simple mode
         if is_expert:
+            icon_name = 'nerd-face.png'  # Maps to Icons.expert_mode (gear)
             tooltip = "Expert Mode (Click to switch to Simple Mode)"
         else:
+            icon_name = 'simple-mode.png'  # Maps to Icons.simple_mode (star)
             tooltip = "Simple Mode (Click to switch to Expert Mode)"
 
         # Apply blue background when Expert mode is active
         if is_expert:
             self._apply_button_color_blue()
 
-        # Nerd face emoji button
-        if self._toolbar_button(icon_mgr, 'nerd-face.png', btn_size, tooltip):
+        # Mode toggle button with dynamic icon
+        if self._toolbar_button(icon_mgr, icon_name, btn_size, tooltip):
             # Toggle mode
             new_mode = 'simple' if is_expert else 'expert'
             app_state.ui_view_mode = new_mode
@@ -971,6 +974,7 @@ class ToolbarUI:
     ICON_MAP = {
         # Mode
         'nerd-face.png': Icons.expert_mode,
+        'simple-mode.png': Icons.simple_mode,
         # File operations
         'document-new.png': Icons.new_file,
         'folder-open.png': Icons.folder,

@@ -18,6 +18,7 @@ import glfw
 import platform
 from application.utils.keyboard_layout_detector import get_layout_detector, KeyboardLayout
 from application.utils import get_icon_texture_manager
+from config.fungen_design import FunGenTheme
 
 
 class KeyboardShortcutsDialog:
@@ -146,11 +147,15 @@ class KeyboardShortcutsDialog:
             imgui.ONCE
         )
 
+        # Apply Spotify-inspired modal styling
+        FunGenTheme.push_modal_style()
+
         expanded, opened = imgui.begin("Keyboard Shortcuts", True)
 
         if not opened:
             self.is_open = False
             imgui.end()
+            FunGenTheme.pop_modal_style()
             return
 
         if expanded:
@@ -172,6 +177,7 @@ class KeyboardShortcutsDialog:
             self._render_reset_confirmation_popup()
 
         imgui.end()
+        FunGenTheme.pop_modal_style()
 
         # Render cheat sheet in separate window if open
         if self.show_cheat_sheet:

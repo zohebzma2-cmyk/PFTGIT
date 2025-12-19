@@ -1,6 +1,6 @@
 import imgui
 import numpy as np
-from config.element_group_colors import GaugeColors
+from config.element_group_colors import GaugeColors, FloatingWidgetColors
 
 class GaugeWindow:
     def __init__(self, app_instance, timeline_num: int):
@@ -27,6 +27,14 @@ class GaugeWindow:
         imgui.set_next_window_size(*window_size, condition=imgui.ONCE)
         imgui.set_next_window_position(*window_pos, condition=imgui.ONCE)
 
+        # Apply Spotify-inspired floating widget styling
+        imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, *FloatingWidgetColors.BACKGROUND)
+        imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND, *FloatingWidgetColors.BACKGROUND)
+        imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND_ACTIVE, 0.114, 0.725, 0.329, 0.7)  # Spotify green
+        imgui.push_style_color(imgui.COLOR_BORDER, *FloatingWidgetColors.BORDER)
+        imgui.push_style_var(imgui.STYLE_WINDOW_ROUNDING, 8.0)
+        imgui.push_style_var(imgui.STYLE_WINDOW_BORDER_SIZE, 1.0)
+
         window_flags = imgui.WINDOW_NO_SCROLLBAR
 
         opened, new_show_state = imgui.begin(
@@ -42,6 +50,8 @@ class GaugeWindow:
 
         if not opened:
             imgui.end()
+            imgui.pop_style_var(2)
+            imgui.pop_style_color(4)
             return
 
         # Update app_state with current window position and size if changed by user
@@ -127,3 +137,5 @@ class GaugeWindow:
         imgui.text_colored(value_text, *GaugeColors.VALUE_TEXT)  # Yellowish text for value
 
         imgui.end()
+        imgui.pop_style_var(2)
+        imgui.pop_style_color(4)

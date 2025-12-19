@@ -8,6 +8,7 @@ import logging
 import string
 
 from config.constants import FUNSCRIPT_METADATA_VERSION # Added
+from config.fungen_design import FunGenTheme
 
 
 def get_common_dirs():
@@ -246,11 +247,15 @@ class ImGuiFileDialog:
         if not self.open:
             return
 
+        # Apply Spotify-inspired modal styling
+        FunGenTheme.push_modal_style()
+
         imgui.set_next_window_size(750, 400)
         is_open_current_frame, self.open = imgui.begin(self.title, self.open)
 
         if not self.open:
             imgui.end()
+            FunGenTheme.pop_modal_style()
             return
 
         if is_open_current_frame:
@@ -272,6 +277,7 @@ class ImGuiFileDialog:
             finally:
                 imgui.columns(1)
                 imgui.end()
+                FunGenTheme.pop_modal_style()
 
     def _draw_directory_navigation(self) -> None:
         current_dir_text = f"{self.current_dir}\n"

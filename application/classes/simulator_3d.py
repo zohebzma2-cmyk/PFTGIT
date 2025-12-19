@@ -6,6 +6,7 @@ from OpenGL.GL.shaders import compileProgram, compileShader
 import glfw
 from PIL import Image
 import os
+from config.element_group_colors import FloatingWidgetColors
 
 def check_gl_error(operation="Operation"):
     error = glGetError()
@@ -403,6 +404,15 @@ class Simulator3DWindow:
             self._debug_frame_count = 0
 
         imgui.set_next_window_size(self.window_size[0], self.window_size[1], condition=imgui.ONCE)
+
+        # Apply Spotify-inspired floating widget styling
+        imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, *FloatingWidgetColors.BACKGROUND)
+        imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND, *FloatingWidgetColors.BACKGROUND)
+        imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND_ACTIVE, 0.114, 0.725, 0.329, 0.7)  # Spotify green
+        imgui.push_style_color(imgui.COLOR_BORDER, *FloatingWidgetColors.BORDER)
+        imgui.push_style_var(imgui.STYLE_WINDOW_ROUNDING, 8.0)
+        imgui.push_style_var(imgui.STYLE_WINDOW_BORDER_SIZE, 1.0)
+
         # Remove scrollbars
         visible, opened_state = imgui.begin("3D Simulator", closable=True, flags=imgui.WINDOW_NO_SCROLLBAR | imgui.WINDOW_NO_SCROLL_WITH_MOUSE)
 
@@ -413,6 +423,8 @@ class Simulator3DWindow:
         # Early exit if window is not visible - skip expensive OpenGL operations
         if not visible:
             imgui.end()
+            imgui.pop_style_var(2)
+            imgui.pop_style_color(4)
             return
 
         # Start performance monitoring for 3D simulator rendering
@@ -454,6 +466,8 @@ class Simulator3DWindow:
             imgui.text("Failed to initialize OpenGL")
             imgui.text("Check console for error messages")
             imgui.end()
+            imgui.pop_style_var(2)
+            imgui.pop_style_color(4)
             return
 
         # Get funscript positions
@@ -480,6 +494,8 @@ class Simulator3DWindow:
             if hasattr(self, 'texture') and self.texture is not None:
                 imgui.image(self.texture, self.window_size[0], self.window_size[1], (0, 1), (1, 0))
             imgui.end()
+            imgui.pop_style_var(2)
+            imgui.pop_style_color(4)
 
             # Log performance stats every 5 seconds
             import time
@@ -590,6 +606,8 @@ class Simulator3DWindow:
             self.app.gui_instance.component_render_times["3D_Simulator"] = render_time_ms
 
         imgui.end()
+        imgui.pop_style_var(2)
+        imgui.pop_style_color(4)
 
     def render_3d_content(self, width=None, height=None):
         """
