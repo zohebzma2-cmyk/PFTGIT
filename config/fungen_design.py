@@ -834,6 +834,139 @@ class Icons:
         dl.add_circle_filled(btn_cx, btn_cy, size * 0.04, c)
         dl.add_circle_filled(btn_cx + size * 0.1, btn_cy, size * 0.04, c)
 
+    # ------------------------------------------------------------------------
+    # NUMBERS & SPECIAL
+    # ------------------------------------------------------------------------
+
+    @staticmethod
+    def number_1(dl, x: float, y: float, size: float, color: Tuple):
+        """Number 1 in a rounded square"""
+        c = Colors.u32(color)
+        m = size * 0.18
+
+        # Rounded square background (outline)
+        dl.add_rect(x + m, y + m, x + size - m, y + size - m, c, 4, 0, Icons.STROKE)
+
+        # Number 1
+        cx = x + size / 2
+        dl.add_line(cx - size * 0.05, y + size * 0.32, cx + size * 0.05, y + size * 0.28, c, Icons.STROKE)
+        dl.add_line(cx + size * 0.05, y + size * 0.28, cx + size * 0.05, y + size * 0.72, c, Icons.STROKE)
+        dl.add_line(cx - size * 0.12, y + size * 0.72, cx + size * 0.12, y + size * 0.72, c, Icons.STROKE)
+
+    @staticmethod
+    def number_2(dl, x: float, y: float, size: float, color: Tuple):
+        """Number 2 in a rounded square"""
+        c = Colors.u32(color)
+        m = size * 0.18
+
+        # Rounded square background (outline)
+        dl.add_rect(x + m, y + m, x + size - m, y + size - m, c, 4, 0, Icons.STROKE)
+
+        # Number 2 - simplified curved shape
+        cx = x + size / 2
+        # Top arc approximation
+        dl.add_line(cx - size * 0.12, y + size * 0.38, cx - size * 0.08, y + size * 0.28, c, Icons.STROKE)
+        dl.add_line(cx - size * 0.08, y + size * 0.28, cx + size * 0.08, y + size * 0.28, c, Icons.STROKE)
+        dl.add_line(cx + size * 0.08, y + size * 0.28, cx + size * 0.12, y + size * 0.38, c, Icons.STROKE)
+        # Diagonal
+        dl.add_line(cx + size * 0.12, y + size * 0.38, cx - size * 0.12, y + size * 0.72, c, Icons.STROKE)
+        # Bottom line
+        dl.add_line(cx - size * 0.12, y + size * 0.72, cx + size * 0.12, y + size * 0.72, c, Icons.STROKE)
+
+    @staticmethod
+    def document(dl, x: float, y: float, size: float, color: Tuple):
+        """Document/page icon"""
+        c = Colors.u32(color)
+        m = size * 0.2
+
+        # Document outline with folded corner
+        fold = size * 0.15
+        dl.add_line(x + m, y + m, x + size - m - fold, y + m, c, Icons.STROKE)
+        dl.add_line(x + size - m - fold, y + m, x + size - m, y + m + fold, c, Icons.STROKE)
+        dl.add_line(x + size - m, y + m + fold, x + size - m, y + size - m, c, Icons.STROKE)
+        dl.add_line(x + size - m, y + size - m, x + m, y + size - m, c, Icons.STROKE)
+        dl.add_line(x + m, y + size - m, x + m, y + m, c, Icons.STROKE)
+
+        # Fold corner
+        dl.add_line(x + size - m - fold, y + m, x + size - m - fold, y + m + fold, c, Icons.STROKE)
+        dl.add_line(x + size - m - fold, y + m + fold, x + size - m, y + m + fold, c, Icons.STROKE)
+
+        # Text lines
+        line_l = x + m + size * 0.1
+        line_r = x + size - m - size * 0.1
+        for i in range(3):
+            ly = y + size * 0.45 + i * size * 0.12
+            dl.add_line(line_l, ly, line_r - (i * size * 0.1), ly, c, Icons.STROKE)
+
+    @staticmethod
+    def sync(dl, x: float, y: float, size: float, color: Tuple):
+        """Sync/refresh circular arrows"""
+        c = Colors.u32(color)
+        cx, cy = x + size/2, y + size/2
+        r = size * 0.3
+
+        # Draw two curved arrows
+        segments = 6
+
+        # Top arc (right to left)
+        for i in range(segments):
+            a1 = -0.3 + (i * math.pi * 0.8 / segments)
+            a2 = -0.3 + ((i + 1) * math.pi * 0.8 / segments)
+            dl.add_line(
+                cx + math.cos(a1) * r, cy + math.sin(a1) * r,
+                cx + math.cos(a2) * r, cy + math.sin(a2) * r,
+                c, Icons.STROKE
+            )
+
+        # Top arrow head
+        ah_x = cx + math.cos(-0.3) * r
+        ah_y = cy + math.sin(-0.3) * r
+        dl.add_line(ah_x, ah_y, ah_x - size * 0.08, ah_y + size * 0.08, c, Icons.STROKE)
+        dl.add_line(ah_x, ah_y, ah_x + size * 0.05, ah_y + size * 0.1, c, Icons.STROKE)
+
+        # Bottom arc (left to right)
+        for i in range(segments):
+            a1 = math.pi - 0.3 + (i * math.pi * 0.8 / segments)
+            a2 = math.pi - 0.3 + ((i + 1) * math.pi * 0.8 / segments)
+            dl.add_line(
+                cx + math.cos(a1) * r, cy + math.sin(a1) * r,
+                cx + math.cos(a2) * r, cy + math.sin(a2) * r,
+                c, Icons.STROKE
+            )
+
+        # Bottom arrow head
+        ah_x2 = cx + math.cos(math.pi - 0.3) * r
+        ah_y2 = cy + math.sin(math.pi - 0.3) * r
+        dl.add_line(ah_x2, ah_y2, ah_x2 + size * 0.08, ah_y2 - size * 0.08, c, Icons.STROKE)
+        dl.add_line(ah_x2, ah_y2, ah_x2 - size * 0.05, ah_y2 - size * 0.1, c, Icons.STROKE)
+
+    @staticmethod
+    def flashlight(dl, x: float, y: float, size: float, color: Tuple):
+        """Flashlight/torch icon for device control"""
+        c = Colors.u32(color)
+        cx = x + size/2
+
+        # Handle
+        h_top = y + size * 0.55
+        h_bot = y + size * 0.85
+        h_w = size * 0.12
+        dl.add_rect(cx - h_w, h_top, cx + h_w, h_bot, c, 2, 0, Icons.STROKE)
+
+        # Head (wider top)
+        head_top = y + size * 0.2
+        head_w = size * 0.22
+        dl.add_line(cx - head_w, h_top, cx - head_w, head_top + size * 0.1, c, Icons.STROKE)
+        dl.add_line(cx - head_w, head_top + size * 0.1, cx - h_w, head_top, c, Icons.STROKE)
+        dl.add_line(cx - h_w, head_top, cx + h_w, head_top, c, Icons.STROKE)
+        dl.add_line(cx + h_w, head_top, cx + head_w, head_top + size * 0.1, c, Icons.STROKE)
+        dl.add_line(cx + head_w, head_top + size * 0.1, cx + head_w, h_top, c, Icons.STROKE)
+
+        # Light rays
+        ray_y = y + size * 0.12
+        dl.add_line(cx, ray_y, cx, ray_y - size * 0.08, c, Icons.STROKE)
+        dl.add_line(cx - size * 0.12, ray_y + size * 0.02, cx - size * 0.18, ray_y - size * 0.04, c, Icons.STROKE)
+        dl.add_line(cx + size * 0.12, ray_y + size * 0.02, cx + size * 0.18, ray_y - size * 0.04, c, Icons.STROKE)
+
 
 # ============================================================================
 # UI COMPONENTS

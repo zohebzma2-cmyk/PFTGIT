@@ -1,30 +1,28 @@
 """
 Toolbar UI Component
 
-Provides a horizontal toolbar with common actions organized into labeled sections:
+Provides a horizontal toolbar with common actions organized into labeled sections.
+Now uses vector icons from the FunGen design system for a clean, professional look.
 
-Sections (each with a label above the icons):
-- MODE: Expert/Simple mode toggle (🤓 nerd face)
+Sections:
+- MODE: Expert/Simple mode toggle
 - PROJECT: New, Open, Save, Export operations
-- PLAYBACK: Play/Pause, Previous/Next Frame, Speed modes (🚶🐢🐇)
+- PLAYBACK: Play/Pause, Frame navigation, Speed modes
 - TIMELINE EDIT: Undo/Redo for Timeline 1 & 2
-- VIEW: Timeline 1/2 (1️⃣2️⃣), Chapter List (📚), 3D Simulator (📈)
-- TRACKING: Start/Stop Tracking (🤖 robot - red when active)
-- TOOLS: Auto-Simplify (🔧), Auto Post-Processing (✨), Ultimate Autotune (🚀),
-         Streamer (📡 satellite - buyers only), Device Control (🎮 gamepad - buyers only)
+- VIEW: Timeline toggles, Chapter List, 3D Simulator
+- TRACKING: Start/Stop AI Tracking
+- TOOLS: Auto-Simplify, Post-Processing, Streamer, Device Control
 
 Toggle visibility via View menu > Show Toolbar.
-
-Required Icons:
-All toolbar icons are defined in config/constants.py under UI_CONTROL_ICON_URLS.
-The dependency checker automatically downloads missing icons on startup.
-
-Displays at the top of the application, below the menu bar.
 """
 
 import imgui
 from application.utils import get_icon_texture_manager
 from application.utils.button_styles import primary_button_style, destructive_button_style
+from config.fungen_design import Icons, Colors
+
+# Flag to enable vector icons (set to True for new design)
+USE_VECTOR_ICONS = True
 
 
 class ToolbarUI:
@@ -969,24 +967,144 @@ class ToolbarUI:
             app_state.show_simulator_3d = not active
             self.app.project_manager.project_dirty = True
 
+    # Mapping from PNG icon names to vector icon functions
+    ICON_MAP = {
+        # Mode
+        'nerd-face.png': Icons.expert_mode,
+        # File operations
+        'document-new.png': Icons.new_file,
+        'folder-open.png': Icons.folder,
+        'save.png': Icons.save,
+        'export.png': Icons.export,
+        # Edit
+        'undo.png': Icons.undo,
+        'redo.png': Icons.redo,
+        'magic-wand.png': Icons.magic_wand,
+        # Playback
+        'play.png': Icons.play,
+        'pause.png': Icons.pause,
+        'stop.png': Icons.stop,
+        'jump-start.png': Icons.skip_start,
+        'jump-end.png': Icons.skip_end,
+        'prev-frame.png': Icons.step_back,
+        'next-frame.png': Icons.step_forward,
+        # Speed
+        'speed-realtime.png': Icons.gauge_normal,
+        'speed-slowmo.png': Icons.gauge_slow,
+        'speed-max.png': Icons.gauge_fast,
+        # Video
+        'video-hide.png': Icons.monitor_off,
+        'video-show.png': Icons.monitor,
+        # Tracking
+        'robot.png': Icons.robot,
+        'wrench.png': Icons.wrench,
+        'sparkles.png': Icons.sparkles,
+        # Timeline
+        'keycap-1.png': Icons.number_1,
+        'keycap-2.png': Icons.number_2,
+        # View
+        'books.png': Icons.list_view,
+        'chart-increasing.png': Icons.cube,
+        # Extras
+        'satellite.png': Icons.satellite,
+        'flashlight.png': Icons.flashlight,
+        'page-facing-up.png': Icons.document,
+        'counterclockwise-arrows.png': Icons.sync,
+    }
+
     def _toolbar_button(self, icon_mgr, icon_name, size, tooltip):
         """
         Render a toolbar button with icon.
 
+        Uses vector icons from the design system when USE_VECTOR_ICONS is True,
+        otherwise falls back to PNG textures.
+
         Returns:
             bool: True if button was clicked
         """
+        # Try vector icon first if enabled
+        if USE_VECTOR_ICONS and icon_name in self.ICON_MAP:
+            return self._vector_button(icon_name, size, tooltip)
+
+        # Fall back to PNG texture
         icon_tex, _, _ = icon_mgr.get_icon_texture(icon_name)
 
         if icon_tex:
             clicked = imgui.image_button(icon_tex, size, size)
         else:
             # Fallback to small labeled button if icon fails to load
-            # Extract a short label from the icon name (e.g., "folder-open.png" -> "Open")
             label = icon_name.replace('.png', '').replace('-', ' ').title().split()[0][:4]
             clicked = imgui.button(f"{label}###{icon_name}", size, size)
 
         if imgui.is_item_hovered():
+            imgui.set_tooltip(tooltip)
+
+        return clicked
+
+    def _vector_button(self, icon_name, size, tooltip, active=False, disabled=False):
+        """
+        Render a vector icon button using the design system.
+
+        Args:
+            icon_name: PNG icon name (will be mapped to vector icon)
+            size: Icon size in pixels
+            tooltip: Hover tooltip
+            active: Whether button is in active state
+            disabled: Whether button is disabled
+
+        Returns:
+            bool: True if button was clicked
+        """
+        icon_func = self.ICON_MAP.get(icon_name, Icons.dot)
+        btn_size = size + 8
+
+        if disabled:
+            imgui.push_style_var(imgui.STYLE_ALPHA, 0.35)
+
+        pos = imgui.get_cursor_screen_pos()
+        clicked = imgui.invisible_button(f"##{icon_name}_{id(self)}", btn_size, btn_size)
+
+        if disabled:
+            clicked = False
+            imgui.pop_style_var()
+
+        dl = imgui.get_window_draw_list()
+        hovered = imgui.is_item_hovered() and not disabled
+        pressed = imgui.is_item_active()
+
+        # Background color based on state
+        if pressed and not disabled:
+            bg = Colors.GREEN if active else Colors.BG_HIGHLIGHT
+        elif hovered:
+            bg = Colors.BG_HIGHLIGHT
+        elif active:
+            bg = Colors.GREEN_DIM
+        else:
+            bg = Colors.BG_ELEVATED
+
+        # Draw rounded background
+        dl.add_rect_filled(
+            pos[0], pos[1],
+            pos[0] + btn_size, pos[1] + btn_size,
+            Colors.u32(bg), rounding=4
+        )
+
+        # Icon color based on state
+        if disabled:
+            icon_color = Colors.TEXT_DISABLED
+        elif active:
+            icon_color = Colors.GREEN
+        elif hovered:
+            icon_color = Colors.TEXT_PRIMARY
+        else:
+            icon_color = Colors.TEXT_SECONDARY
+
+        # Draw icon centered
+        icon_x = pos[0] + (btn_size - size) / 2
+        icon_y = pos[1] + (btn_size - size) / 2
+        icon_func(dl, icon_x, icon_y, size, icon_color)
+
+        if tooltip and hovered:
             imgui.set_tooltip(tooltip)
 
         return clicked
@@ -998,11 +1116,19 @@ class ToolbarUI:
         Returns:
             bool: True if button was clicked
         """
-        # Highlight active buttons with a different tint
+        # Use vector button if enabled
+        if USE_VECTOR_ICONS and icon_name in self.ICON_MAP:
+            return self._vector_button(
+                icon_name, size,
+                f"{tooltip} ({'Active' if is_active else 'Inactive'})",
+                active=is_active
+            )
+
+        # Fall back to PNG with color styling
         if is_active:
-            imgui.push_style_color(imgui.COLOR_BUTTON, 0.3, 0.5, 0.7, 0.8)
-            imgui.push_style_color(imgui.COLOR_BUTTON_HOVERED, 0.4, 0.6, 0.8, 0.9)
-            imgui.push_style_color(imgui.COLOR_BUTTON_ACTIVE, 0.2, 0.4, 0.6, 1.0)
+            imgui.push_style_color(imgui.COLOR_BUTTON, 0.114, 0.725, 0.329, 0.3)
+            imgui.push_style_color(imgui.COLOR_BUTTON_HOVERED, 0.141, 0.8, 0.38, 0.5)
+            imgui.push_style_color(imgui.COLOR_BUTTON_ACTIVE, 0.114, 0.725, 0.329, 0.7)
 
         clicked = self._toolbar_button(icon_mgr, icon_name, size,
                                       f"{tooltip} ({'Active' if is_active else 'Inactive'})")
