@@ -23,7 +23,7 @@ class Funscript(Base):
 
     # Funscript data
     actions = Column(JSON, default=list)  # List of {at, pos} points
-    metadata = Column(JSON, default=dict)  # Funscript metadata
+    script_metadata = Column(JSON, default=dict)  # Funscript metadata
 
     # Settings
     inverted = Column(Boolean, default=False)
