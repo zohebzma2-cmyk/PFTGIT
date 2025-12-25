@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   Upload,
   Play,
@@ -14,10 +14,20 @@ import {
   ZoomOut,
   Maximize,
   Sliders,
-  Activity
+  Activity,
+  Loader2
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useModeStore } from '@/store/modeStore'
+import { videosApi, VideoMetadata } from '@/api/client'
+
+// Helper to format duration in ms to MM:SS
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
 
 // Toolbar button component
 function ToolbarButton({
@@ -44,17 +54,58 @@ function ToolbarButton({
 
 export default function EditorPage() {
   const [isPlaying, setIsPlaying] = useState(false)
-  const [hasVideo, setHasVideo] = useState(false)
+  const [video, setVideo] = useState<VideoMetadata | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { mode, toggleMode } = useModeStore()
   const isExpert = mode === 'expert'
 
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsUploading(true)
+    setUploadError(null)
+
+    try {
+      const metadata = await videosApi.upload(file)
+      setVideo(metadata)
+    } catch (error) {
+      console.error('Upload failed:', error)
+      setUploadError(error instanceof Error ? error.message : 'Upload failed')
+    } finally {
+      setIsUploading(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const openFileDialog = () => {
+    fileInputRef.current?.click()
+  }
+
+  // Get video stream URL from API
+  const videoStreamUrl = video ? videosApi.getStreamUrl(video.id) : null
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*,.mp4,.mkv,.avi,.mov,.webm"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+
       {/* Toolbar */}
       <div className="h-12 bg-bg-surface border-b border-border flex items-center px-2 gap-1">
         {/* File actions */}
         <div className="flex items-center gap-1 pr-2 border-r border-border">
-          <ToolbarButton icon={Upload} label="Open Video" />
+          <ToolbarButton icon={Upload} label="Open Video" onClick={openFileDialog} />
           <ToolbarButton icon={Save} label="Save Project" />
           <ToolbarButton icon={Download} label="Export Funscript" />
         </div>
@@ -134,8 +185,26 @@ export default function EditorPage() {
         <div className="flex-1 flex flex-col">
           {/* Video player */}
           <div className="flex-1 bg-bg-overlay flex items-center justify-center">
-            {hasVideo ? (
-              <video className="max-w-full max-h-full" controls />
+            {isUploading ? (
+              <div className="text-center">
+                <div className="w-20 h-20 rounded-full bg-bg-elevated flex items-center justify-center mx-auto mb-4">
+                  <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                </div>
+                <h3 className="text-lg font-semibold text-text-primary mb-2">
+                  Uploading video...
+                </h3>
+                <p className="text-text-secondary">
+                  Please wait while we process your video
+                </p>
+              </div>
+            ) : video && videoStreamUrl ? (
+              <video
+                className="max-w-full max-h-full"
+                controls
+                src={videoStreamUrl}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+              />
             ) : (
               <div className="text-center">
                 <div className="w-20 h-20 rounded-full bg-bg-elevated flex items-center justify-center mx-auto mb-4">
@@ -147,8 +216,13 @@ export default function EditorPage() {
                 <p className="text-text-secondary mb-4">
                   Upload a video to get started
                 </p>
+                {uploadError && (
+                  <p className="text-error text-sm mb-4">
+                    Error: {uploadError}
+                  </p>
+                )}
                 <button
-                  onClick={() => setHasVideo(true)}
+                  onClick={openFileDialog}
                   className="btn-primary"
                 >
                   <Upload className="w-5 h-5" />
@@ -292,8 +366,26 @@ export default function EditorPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-text-secondary">Duration</span>
-                    <span className="text-text-primary font-medium">00:00</span>
+                    <span className="text-text-primary font-medium">
+                      {video ? formatDuration(video.duration_ms) : '00:00'}
+                    </span>
                   </div>
+                  {video && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-text-secondary">Resolution</span>
+                        <span className="text-text-primary font-medium">
+                          {video.width}x{video.height}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-text-secondary">FPS</span>
+                        <span className="text-text-primary font-medium">
+                          {video.fps.toFixed(1)}
+                        </span>
+                      </div>
+                    </>
+                  )}
                   {isExpert && (
                     <>
                       <div className="flex justify-between">

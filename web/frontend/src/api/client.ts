@@ -2,6 +2,8 @@
  * API Client for FunGen Backend
  */
 
+import { useAuthStore } from '../store/authStore'
+
 // In development, Vite proxies /api to the backend
 // In production, use VITE_API_URL environment variable
 const API_BASE = import.meta.env.VITE_API_URL
@@ -15,6 +17,14 @@ class ApiError extends Error {
   }
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const token = useAuthStore.getState().token
+  if (token) {
+    return { 'Authorization': `Bearer ${token}` }
+  }
+  return {}
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -24,6 +34,7 @@ async function request<T>(
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeaders(),
       ...options.headers,
     },
     ...options,
@@ -57,12 +68,16 @@ export const projectsApi = {
 
 // Videos API
 export const videosApi = {
-  upload: async (file: File) => {
+  upload: async (file: File, onProgress?: (progress: number) => void) => {
     const formData = new FormData()
     formData.append('file', file)
 
     const response = await fetch(`${API_BASE}/videos/upload`, {
       method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        // Note: Don't set Content-Type for FormData - browser sets it with boundary
+      },
       body: formData,
     })
 
