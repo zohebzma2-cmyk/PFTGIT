@@ -15,9 +15,12 @@ import {
   ChevronRight,
   ZoomIn,
   ZoomOut,
-  Maximize
+  Maximize,
+  Sliders,
+  Activity
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import { useModeStore } from '@/store/modeStore'
 
 // Toolbar button component
 function ToolbarButton({
@@ -45,6 +48,8 @@ function ToolbarButton({
 export default function EditorPage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasVideo, setHasVideo] = useState(false)
+  const { mode, toggleMode } = useModeStore()
+  const isExpert = mode === 'expert'
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -94,12 +99,35 @@ export default function EditorPage() {
         <div className="flex-1" />
 
         {/* Mode toggle */}
-        <div className="flex items-center gap-2 text-sm text-text-secondary">
-          <span>Simple</span>
-          <button className="w-10 h-5 bg-bg-elevated rounded-full relative">
-            <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-text-secondary rounded-full transition-transform" />
+        <div className="flex items-center gap-2 text-sm">
+          <span className={clsx(
+            'transition-colors',
+            !isExpert ? 'text-primary font-medium' : 'text-text-muted'
+          )}>
+            Simple
+          </span>
+          <button
+            onClick={toggleMode}
+            className={clsx(
+              'w-10 h-5 rounded-full relative transition-colors',
+              isExpert ? 'bg-primary' : 'bg-bg-elevated'
+            )}
+          >
+            <div
+              className={clsx(
+                'absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200',
+                isExpert
+                  ? 'left-[22px] bg-bg-base'
+                  : 'left-0.5 bg-text-secondary'
+              )}
+            />
           </button>
-          <span className="text-text-muted">Expert</span>
+          <span className={clsx(
+            'transition-colors',
+            isExpert ? 'text-primary font-medium' : 'text-text-muted'
+          )}>
+            Expert
+          </span>
         </div>
       </div>
 
@@ -145,43 +173,98 @@ export default function EditorPage() {
         <div className="w-72 bg-bg-surface border-l border-border overflow-y-auto">
           <div className="p-4">
             <h2 className="font-semibold text-text-primary mb-4 flex items-center gap-2">
-              <Settings className="w-5 h-5" />
-              Control Panel
+              {isExpert ? <Sliders className="w-5 h-5" /> : <Settings className="w-5 h-5" />}
+              {isExpert ? 'Expert Controls' : 'Control Panel'}
             </h2>
 
-            {/* Generation Settings */}
             <div className="space-y-4">
-              <div className="card">
-                <h3 className="text-sm font-medium text-text-primary mb-3">
-                  AI Settings
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-text-secondary block mb-1">
-                      Confidence Threshold
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      defaultValue="50"
-                      className="w-full accent-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-text-secondary block mb-1">
-                      Smoothing
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      defaultValue="30"
-                      className="w-full accent-primary"
-                    />
+              {/* Simple Mode: Quick Actions */}
+              {!isExpert && (
+                <div className="card">
+                  <h3 className="text-sm font-medium text-text-primary mb-3">
+                    Quick Actions
+                  </h3>
+                  <p className="text-xs text-text-secondary mb-3">
+                    Load a video and click Generate to create a funscript automatically.
+                  </p>
+                  <button className="w-full btn-primary text-sm">
+                    <Wand2 className="w-4 h-4" />
+                    Auto Generate
+                  </button>
+                </div>
+              )}
+
+              {/* Expert Mode: AI Settings */}
+              {isExpert && (
+                <div className="card">
+                  <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
+                    <Activity className="w-4 h-4" />
+                    AI Settings
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs text-text-secondary">
+                          Confidence Threshold
+                        </label>
+                        <span className="text-xs text-primary font-medium">50%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        defaultValue="50"
+                        className="w-full accent-primary"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs text-text-secondary">
+                          Smoothing
+                        </label>
+                        <span className="text-xs text-primary font-medium">30%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        defaultValue="30"
+                        className="w-full accent-primary"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs text-text-secondary">
+                          Min Point Distance
+                        </label>
+                        <span className="text-xs text-primary font-medium">100ms</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="50"
+                        max="500"
+                        defaultValue="100"
+                        className="w-full accent-primary"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs text-text-secondary">
+                          Motion Sensitivity
+                        </label>
+                        <span className="text-xs text-primary font-medium">70%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        defaultValue="70"
+                        className="w-full accent-primary"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Device Status */}
               <div className="card">
@@ -214,12 +297,47 @@ export default function EditorPage() {
                     <span className="text-text-secondary">Duration</span>
                     <span className="text-text-primary font-medium">00:00</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-secondary">Avg Speed</span>
-                    <span className="text-text-primary font-medium">0 u/s</span>
-                  </div>
+                  {isExpert && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-text-secondary">Avg Speed</span>
+                        <span className="text-text-primary font-medium">0 u/s</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-text-secondary">Peak Speed</span>
+                        <span className="text-text-primary font-medium">0 u/s</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-text-secondary">Intensity</span>
+                        <span className="text-text-primary font-medium">0%</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
+
+              {/* Expert Mode: Advanced Options */}
+              {isExpert && (
+                <div className="card">
+                  <h3 className="text-sm font-medium text-text-primary mb-3">
+                    Advanced Options
+                  </h3>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="accent-primary" defaultChecked />
+                      <span className="text-sm text-text-secondary">Auto-smooth peaks</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="accent-primary" />
+                      <span className="text-sm text-text-secondary">Invert output</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" className="accent-primary" defaultChecked />
+                      <span className="text-sm text-text-secondary">Limit range (0-100)</span>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
