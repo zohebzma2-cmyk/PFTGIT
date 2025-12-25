@@ -2,7 +2,11 @@
  * API Client for FunGen Backend
  */
 
-const API_BASE = '/api'
+// In development, Vite proxies /api to the backend
+// In production, use VITE_API_URL environment variable
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api'
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
