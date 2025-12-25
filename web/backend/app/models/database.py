@@ -8,9 +8,29 @@ from typing import AsyncGenerator
 
 from app.config import settings
 
+
+def get_async_database_url(url: str) -> str:
+    """Convert database URL to async-compatible format.
+
+    Render provides postgres:// URLs, but SQLAlchemy async needs postgresql+asyncpg://
+    """
+    if url.startswith("postgres://"):
+        # Render uses postgres:// but SQLAlchemy async needs postgresql+asyncpg://
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://"):
+        # Standard PostgreSQL URL
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    else:
+        # SQLite or already async URL
+        return url
+
+
+# Get async-compatible database URL
+database_url = get_async_database_url(settings.database_url)
+
 # Create async engine
 engine = create_async_engine(
-    settings.database_url,
+    database_url,
     echo=settings.debug,
     future=True,
 )

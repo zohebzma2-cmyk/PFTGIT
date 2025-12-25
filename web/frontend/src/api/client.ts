@@ -161,9 +161,10 @@ export const devicesApi = {
 export interface Project {
   id: string
   name: string
-  description: string
-  video_path: string | null
-  funscript_path: string | null
+  description: string | null
+  is_public: boolean
+  video_count: number
+  funscript_count: number
   created_at: string
   updated_at: string
 }
@@ -181,13 +182,15 @@ export interface ProjectUpdate {
 export interface VideoMetadata {
   id: string
   filename: string
-  path: string
-  duration_ms: number
-  width: number
-  height: number
-  fps: number
-  frame_count: number
-  size_bytes: number
+  original_filename: string
+  duration_ms: number | null
+  width: number | null
+  height: number | null
+  fps: number | null
+  frame_count: number | null
+  file_size: number
+  project_id: string
+  created_at: string
 }
 
 export interface FunscriptPoint {

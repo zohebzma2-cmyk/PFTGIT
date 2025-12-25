@@ -19,12 +19,13 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = int(os.getenv("PORT", "8000"))
 
-    # File storage
-    upload_dir: str = os.getenv("UPLOAD_DIR", "./uploads")
-    output_dir: str = os.getenv("OUTPUT_DIR", "./output")
+    # File storage - use PERSISTENT_STORAGE_PATH for Render disk
+    # On Render, set PERSISTENT_STORAGE_PATH=/var/data
+    storage_base: str = os.getenv("PERSISTENT_STORAGE_PATH", ".")
     max_upload_size: int = 500 * 1024 * 1024  # 500MB
 
     # Database - supports both SQLite and PostgreSQL
+    # On Render, set DATABASE_URL to the PostgreSQL connection string
     database_url: str = os.getenv(
         "DATABASE_URL",
         "sqlite+aiosqlite:///./fungen.db"
@@ -39,9 +40,25 @@ class Settings(BaseSettings):
         # Ignore extra environment variables to avoid parsing errors
         extra = "ignore"
 
+    @property
+    def upload_dir(self) -> str:
+        """Directory for uploaded videos."""
+        return os.path.join(self.storage_base, "uploads")
+
+    @property
+    def output_dir(self) -> str:
+        """Directory for generated outputs."""
+        return os.path.join(self.storage_base, "output")
+
+    @property
+    def thumbnails_dir(self) -> str:
+        """Directory for video thumbnails."""
+        return os.path.join(self.storage_base, "thumbnails")
+
 
 settings = Settings()
 
 # Ensure directories exist
 os.makedirs(settings.upload_dir, exist_ok=True)
 os.makedirs(settings.output_dir, exist_ok=True)
+os.makedirs(settings.thumbnails_dir, exist_ok=True)

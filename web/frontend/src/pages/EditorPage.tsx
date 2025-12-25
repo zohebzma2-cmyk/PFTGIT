@@ -367,23 +367,27 @@ export default function EditorPage() {
                   <div className="flex justify-between">
                     <span className="text-text-secondary">Duration</span>
                     <span className="text-text-primary font-medium">
-                      {video ? formatDuration(video.duration_ms) : '00:00'}
+                      {video?.duration_ms ? formatDuration(video.duration_ms) : '00:00'}
                     </span>
                   </div>
                   {video && (
                     <>
-                      <div className="flex justify-between">
-                        <span className="text-text-secondary">Resolution</span>
-                        <span className="text-text-primary font-medium">
-                          {video.width}x{video.height}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-text-secondary">FPS</span>
-                        <span className="text-text-primary font-medium">
-                          {video.fps.toFixed(1)}
-                        </span>
-                      </div>
+                      {video.width && video.height && (
+                        <div className="flex justify-between">
+                          <span className="text-text-secondary">Resolution</span>
+                          <span className="text-text-primary font-medium">
+                            {video.width}x{video.height}
+                          </span>
+                        </div>
+                      )}
+                      {video.fps && (
+                        <div className="flex justify-between">
+                          <span className="text-text-secondary">FPS</span>
+                          <span className="text-text-primary font-medium">
+                            {video.fps.toFixed(1)}
+                          </span>
+                        </div>
+                      )}
                     </>
                   )}
                   {isExpert && (

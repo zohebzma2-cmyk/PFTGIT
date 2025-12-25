@@ -1,16 +1,20 @@
 """
 Projects API Router
-Handles project CRUD operations.
+Handles project CRUD operations with persistent database storage.
 """
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
-import uuid
-import os
 
-from app.config import settings
+from app.models.database import get_db
+from app.models.project import Project
+from app.auth.dependencies import get_current_active_user
+from app.auth.jwt import TokenData
 
 router = APIRouter()
 
@@ -27,76 +31,172 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
 
 
-class Project(BaseModel):
+class ProjectResponse(BaseModel):
     """Project response model."""
     id: str
     name: str
-    description: str
-    video_path: Optional[str] = None
-    funscript_path: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    description: Optional[str]
+    is_public: bool
+    video_count: int
+    funscript_count: int
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
 
 
-# In-memory storage (replace with database)
-projects_db: dict[str, dict] = {}
+@router.get("/", response_model=List[ProjectResponse])
+async def list_projects(
+    current_user: TokenData = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """List all projects for the current user."""
+    result = await db.execute(
+        select(Project)
+        .options(selectinload(Project.videos), selectinload(Project.funscripts))
+        .where(Project.owner_id == current_user.user_id)
+        .order_by(Project.updated_at.desc())
+    )
+    projects = result.scalars().all()
+
+    return [
+        ProjectResponse(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            is_public=p.is_public,
+            video_count=len(p.videos),
+            funscript_count=len(p.funscripts),
+            created_at=p.created_at.isoformat(),
+            updated_at=p.updated_at.isoformat()
+        )
+        for p in projects
+    ]
 
 
-@router.get("/", response_model=List[Project])
-async def list_projects():
-    """List all projects."""
-    return list(projects_db.values())
-
-
-@router.post("/", response_model=Project)
-async def create_project(project: ProjectCreate):
+@router.post("/", response_model=ProjectResponse, status_code=201)
+async def create_project(
+    data: ProjectCreate,
+    current_user: TokenData = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
     """Create a new project."""
-    project_id = str(uuid.uuid4())
-    now = datetime.utcnow()
+    project = Project(
+        name=data.name,
+        description=data.description or "",
+        owner_id=current_user.user_id
+    )
 
-    new_project = {
-        "id": project_id,
-        "name": project.name,
-        "description": project.description,
-        "video_path": None,
-        "funscript_path": None,
-        "created_at": now,
-        "updated_at": now,
-    }
+    db.add(project)
+    await db.flush()
 
-    projects_db[project_id] = new_project
-    return new_project
+    return ProjectResponse(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        is_public=project.is_public,
+        video_count=0,
+        funscript_count=0,
+        created_at=project.created_at.isoformat(),
+        updated_at=project.updated_at.isoformat()
+    )
 
 
-@router.get("/{project_id}", response_model=Project)
-async def get_project(project_id: str):
+@router.get("/{project_id}", response_model=ProjectResponse)
+async def get_project(
+    project_id: str,
+    current_user: TokenData = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
     """Get a project by ID."""
-    if project_id not in projects_db:
+    result = await db.execute(
+        select(Project)
+        .options(selectinload(Project.videos), selectinload(Project.funscripts))
+        .where(
+            Project.id == project_id,
+            Project.owner_id == current_user.user_id
+        )
+    )
+    project = result.scalar_one_or_none()
+
+    if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return projects_db[project_id]
+
+    return ProjectResponse(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        is_public=project.is_public,
+        video_count=len(project.videos),
+        funscript_count=len(project.funscripts),
+        created_at=project.created_at.isoformat(),
+        updated_at=project.updated_at.isoformat()
+    )
 
 
-@router.put("/{project_id}", response_model=Project)
-async def update_project(project_id: str, project: ProjectUpdate):
+@router.put("/{project_id}", response_model=ProjectResponse)
+async def update_project(
+    project_id: str,
+    data: ProjectUpdate,
+    current_user: TokenData = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
     """Update a project."""
-    if project_id not in projects_db:
+    result = await db.execute(
+        select(Project)
+        .options(selectinload(Project.videos), selectinload(Project.funscripts))
+        .where(
+            Project.id == project_id,
+            Project.owner_id == current_user.user_id
+        )
+    )
+    project = result.scalar_one_or_none()
+
+    if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    existing = projects_db[project_id]
-    if project.name is not None:
-        existing["name"] = project.name
-    if project.description is not None:
-        existing["description"] = project.description
-    existing["updated_at"] = datetime.utcnow()
+    if data.name is not None:
+        project.name = data.name
+    if data.description is not None:
+        project.description = data.description
 
-    return existing
+    project.updated_at = datetime.utcnow()
+
+    return ProjectResponse(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        is_public=project.is_public,
+        video_count=len(project.videos),
+        funscript_count=len(project.funscripts),
+        created_at=project.created_at.isoformat(),
+        updated_at=project.updated_at.isoformat()
+    )
 
 
 @router.delete("/{project_id}")
-async def delete_project(project_id: str):
-    """Delete a project."""
-    if project_id not in projects_db:
+async def delete_project(
+    project_id: str,
+    current_user: TokenData = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a project and all its contents."""
+    result = await db.execute(
+        select(Project)
+        .options(selectinload(Project.videos))
+        .where(
+            Project.id == project_id,
+            Project.owner_id == current_user.user_id
+        )
+    )
+    project = result.scalar_one_or_none()
+
+    if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    del projects_db[project_id]
+    # Note: Videos and funscripts will be cascade deleted
+    # File cleanup should be handled separately or via background task
+    await db.delete(project)
+
     return {"message": "Project deleted"}
