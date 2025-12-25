@@ -5,7 +5,6 @@ import {
   Play,
   Zap,
   ArrowRight,
-  Video,
   FileText
 } from 'lucide-react'
 
@@ -25,12 +24,6 @@ const features = [
     title: 'Live Preview',
     description: 'Real-time playback with device synchronization',
   },
-]
-
-const stats = [
-  { label: 'Videos Processed', value: '0' },
-  { label: 'Funscripts Created', value: '0' },
-  { label: 'Processing Time Saved', value: '0h' },
 ]
 
 export default function HomePage() {

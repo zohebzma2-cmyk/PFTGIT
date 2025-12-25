@@ -4,8 +4,6 @@ import {
   Plus,
   FolderOpen,
   MoreVertical,
-  Trash2,
-  Edit,
   Play,
   Clock
 } from 'lucide-react'
