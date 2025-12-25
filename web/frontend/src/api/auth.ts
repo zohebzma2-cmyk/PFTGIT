@@ -4,7 +4,10 @@
 
 import { useAuthStore } from '../store/authStore'
 
-const API_BASE = '/api/auth'
+// In development, Vite proxies /api to the backend
+// In production, use VITE_API_URL environment variable
+const API_URL = import.meta.env.VITE_API_URL || ''
+const API_BASE = `${API_URL}/api/auth`
 
 class AuthApiError extends Error {
   constructor(public status: number, message: string) {
