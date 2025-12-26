@@ -1,0 +1,28 @@
+# Render.com deployment configuration
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: fungen-api
+    env: python
+    buildCommand: pip install -r requirements.txt -r requirements-auth.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fungen-db
+          property: connectionString
+    autoDeploy: true
+
+databases:
+  - name: fungen-db
+    plan: free
+    databaseName: fungen
+    user: fungen
