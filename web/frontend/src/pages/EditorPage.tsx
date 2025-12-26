@@ -234,6 +234,18 @@ export default function EditorPage() {
   const [connectionKey, setConnectionKey] = useState('')
   const [isConnecting, setIsConnecting] = useState(false)
 
+  // Settings state
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [settings, setSettings] = useState({
+    confidenceThreshold: 50,
+    smoothingFactor: 30,
+    minPointDistance: 100,
+    autoSmoothPeaks: true,
+    invertOutput: false,
+    limitRange: true,
+    playbackSpeed: 1.0,
+  })
+
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -721,7 +733,11 @@ export default function EditorPage() {
             active={!!device}
             onClick={toggleDeviceModal}
           />
-          <ToolbarButton icon={Settings} label="Settings" />
+          <ToolbarButton
+            icon={Settings}
+            label="Settings"
+            onClick={() => setShowSettingsModal(true)}
+          />
         </div>
 
         {/* Spacer */}
@@ -1122,6 +1138,201 @@ export default function EditorPage() {
                     Connect
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowSettingsModal(false)}
+          />
+          {/* Modal */}
+          <div className="relative bg-bg-surface rounded-lg p-6 w-full max-w-lg mx-4 shadow-xl max-h-[80vh] overflow-y-auto">
+            <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              Settings
+            </h2>
+
+            {/* AI Processing Settings */}
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                AI Processing
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-sm text-text-secondary">
+                      Confidence Threshold
+                    </label>
+                    <span className="text-sm text-primary font-medium">
+                      {settings.confidenceThreshold}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={settings.confidenceThreshold}
+                    onChange={(e) => setSettings(s => ({ ...s, confidenceThreshold: Number(e.target.value) }))}
+                    className="w-full accent-primary"
+                  />
+                  <p className="text-xs text-text-muted mt-1">
+                    Higher values result in fewer but more accurate detections
+                  </p>
+                </div>
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-sm text-text-secondary">
+                      Smoothing Factor
+                    </label>
+                    <span className="text-sm text-primary font-medium">
+                      {settings.smoothingFactor}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={settings.smoothingFactor}
+                    onChange={(e) => setSettings(s => ({ ...s, smoothingFactor: Number(e.target.value) }))}
+                    className="w-full accent-primary"
+                  />
+                  <p className="text-xs text-text-muted mt-1">
+                    Higher values produce smoother output
+                  </p>
+                </div>
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-sm text-text-secondary">
+                      Min Point Distance
+                    </label>
+                    <span className="text-sm text-primary font-medium">
+                      {settings.minPointDistance}ms
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="500"
+                    step="10"
+                    value={settings.minPointDistance}
+                    onChange={(e) => setSettings(s => ({ ...s, minPointDistance: Number(e.target.value) }))}
+                    className="w-full accent-primary"
+                  />
+                  <p className="text-xs text-text-muted mt-1">
+                    Minimum time between funscript points
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Output Settings */}
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
+                <Sliders className="w-4 h-4" />
+                Output Settings
+              </h3>
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.autoSmoothPeaks}
+                    onChange={(e) => setSettings(s => ({ ...s, autoSmoothPeaks: e.target.checked }))}
+                    className="accent-primary w-4 h-4"
+                  />
+                  <div>
+                    <span className="text-sm text-text-primary">Auto-smooth peaks</span>
+                    <p className="text-xs text-text-muted">Reduce sudden position changes</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.invertOutput}
+                    onChange={(e) => setSettings(s => ({ ...s, invertOutput: e.target.checked }))}
+                    className="accent-primary w-4 h-4"
+                  />
+                  <div>
+                    <span className="text-sm text-text-primary">Invert output</span>
+                    <p className="text-xs text-text-muted">Flip position values (0↔100)</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.limitRange}
+                    onChange={(e) => setSettings(s => ({ ...s, limitRange: e.target.checked }))}
+                    className="accent-primary w-4 h-4"
+                  />
+                  <div>
+                    <span className="text-sm text-text-primary">Limit range (0-100)</span>
+                    <p className="text-xs text-text-muted">Clamp all positions to valid range</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Playback Settings */}
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
+                <Play className="w-4 h-4" />
+                Playback
+              </h3>
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-sm text-text-secondary">
+                    Playback Speed
+                  </label>
+                  <span className="text-sm text-primary font-medium">
+                    {settings.playbackSpeed}x
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.25"
+                  max="2"
+                  step="0.25"
+                  value={settings.playbackSpeed}
+                  onChange={(e) => {
+                    const speed = Number(e.target.value)
+                    setSettings(s => ({ ...s, playbackSpeed: speed }))
+                    if (videoRef.current) {
+                      videoRef.current.playbackRate = speed
+                    }
+                  }}
+                  className="w-full accent-primary"
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-4 border-t border-border">
+              <button
+                className="btn-secondary text-sm"
+                onClick={() => setSettings({
+                  confidenceThreshold: 50,
+                  smoothingFactor: 30,
+                  minPointDistance: 100,
+                  autoSmoothPeaks: true,
+                  invertOutput: false,
+                  limitRange: true,
+                  playbackSpeed: 1.0,
+                })}
+              >
+                Reset to Defaults
+              </button>
+              <button
+                className="btn-primary text-sm"
+                onClick={() => setShowSettingsModal(false)}
+              >
+                Done
               </button>
             </div>
           </div>
