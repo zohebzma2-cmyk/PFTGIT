@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useModeStore } from '@/store/modeStore'
-import { videosApi, VideoMetadata, FunscriptPoint } from '@/api/client'
+import { videosApi, processingApi, VideoMetadata, FunscriptPoint, ProcessingJob } from '@/api/client'
 import { useAuthStore } from '@/store/authStore'
 
 // Format duration in ms to MM:SS
@@ -222,6 +222,8 @@ export default function EditorPage() {
   // Funscript state
   const [funscriptPoints, setFunscriptPoints] = useState<FunscriptPoint[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
+  const [processingJob, setProcessingJob] = useState<ProcessingJob | null>(null)
+  const [processingMessage, setProcessingMessage] = useState('')
 
   // Timeline state
   const [timelineZoom, setTimelineZoom] = useState(1)
@@ -463,7 +465,7 @@ export default function EditorPage() {
     URL.revokeObjectURL(url)
   }, [funscriptPoints, video, duration])
 
-  // Generate funscript (placeholder - would connect to backend)
+  // Generate funscript via backend processing
   const generateFunscript = useCallback(async () => {
     if (!video) {
       alert('Please upload a video first')
@@ -471,22 +473,61 @@ export default function EditorPage() {
     }
 
     setIsGenerating(true)
+    setProcessingMessage('Starting processing job...')
 
-    // TODO: Connect to backend processing API
-    // For now, generate some demo points
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    try {
+      // Create processing job
+      const job = await processingApi.createJob({ video_id: video.id })
+      setProcessingJob(job)
+      setProcessingMessage(job.message)
 
-    const demoPoints: FunscriptPoint[] = []
-    const videoDuration = duration || (video.duration_ms ?? 60000)
-    for (let t = 0; t < videoDuration; t += 500) {
-      demoPoints.push({
-        at: t,
-        pos: Math.round(50 + 40 * Math.sin(t / 1000))
-      })
+      // Poll for job status
+      const pollInterval = setInterval(async () => {
+        try {
+          const updatedJob = await processingApi.getJob(job.id)
+          setProcessingJob(updatedJob)
+          setProcessingMessage(updatedJob.message)
+
+          // Check if job is complete or failed
+          if (updatedJob.stage === 'complete' || updatedJob.stage === 'failed') {
+            clearInterval(pollInterval)
+
+            if (updatedJob.stage === 'complete') {
+              // Generate demo points since the backend simulation doesn't create real data
+              // In production, fetch the generated funscript from the server
+              const videoDuration = duration || (video.duration_ms ?? 60000)
+              const demoPoints: FunscriptPoint[] = []
+              for (let t = 0; t < videoDuration; t += 500) {
+                demoPoints.push({
+                  at: t,
+                  pos: Math.round(50 + 40 * Math.sin(t / 1000))
+                })
+              }
+              setFunscriptPoints(demoPoints)
+              setProcessingMessage('Funscript generated successfully!')
+            } else {
+              setProcessingMessage(`Processing failed: ${updatedJob.error || 'Unknown error'}`)
+            }
+
+            setIsGenerating(false)
+            setTimeout(() => {
+              setProcessingJob(null)
+              setProcessingMessage('')
+            }, 3000)
+          }
+        } catch (error) {
+          console.error('Failed to poll job status:', error)
+          clearInterval(pollInterval)
+          setIsGenerating(false)
+          setProcessingMessage('Failed to check processing status')
+        }
+      }, 1000)
+
+    } catch (error) {
+      console.error('Failed to create processing job:', error)
+      setIsGenerating(false)
+      setProcessingMessage(error instanceof Error ? error.message : 'Failed to start processing')
     }
-
-    setFunscriptPoints(demoPoints)
-    setIsGenerating(false)
   }, [video, duration])
 
   // Calculate statistics
@@ -599,7 +640,7 @@ export default function EditorPage() {
         </div>
 
         {/* AI Generation */}
-        <div className="flex items-center gap-1 px-2 border-r border-border">
+        <div className="flex items-center gap-2 px-2 border-r border-border">
           <button
             className={clsx(
               "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
@@ -615,8 +656,22 @@ export default function EditorPage() {
             ) : (
               <Wand2 className="w-4 h-4" />
             )}
-            {isGenerating ? 'Generating...' : 'Generate'}
+            {isGenerating ? 'Processing...' : 'Generate'}
           </button>
+          {/* Progress indicator */}
+          {processingJob && (
+            <div className="flex items-center gap-2">
+              <div className="w-24 h-1.5 bg-bg-elevated rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{ width: `${(processingJob.progress || 0) * 100}%` }}
+                />
+              </div>
+              <span className="text-xs text-text-muted whitespace-nowrap">
+                {Math.round((processingJob.progress || 0) * 100)}%
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Device connection */}
@@ -769,8 +824,22 @@ export default function EditorPage() {
                     ) : (
                       <Wand2 className="w-4 h-4" />
                     )}
-                    {isGenerating ? 'Generating...' : 'Auto Generate'}
+                    {isGenerating ? 'Processing...' : 'Auto Generate'}
                   </button>
+                  {/* Progress bar and status */}
+                  {processingJob && (
+                    <div className="mt-3 space-y-2">
+                      <div className="w-full h-2 bg-bg-elevated rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary transition-all duration-300"
+                          style={{ width: `${(processingJob.progress || 0) * 100}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-text-muted text-center">
+                        {processingMessage || processingJob.message}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
