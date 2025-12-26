@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Upload,
   Play,
@@ -20,6 +20,7 @@ import {
 import { clsx } from 'clsx'
 import { useModeStore } from '@/store/modeStore'
 import { videosApi, VideoMetadata } from '@/api/client'
+import { useAuthStore } from '@/store/authStore'
 
 // Helper to format duration in ms to MM:SS
 function formatDuration(ms: number): string {
@@ -55,11 +56,63 @@ function ToolbarButton({
 export default function EditorPage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [video, setVideo] = useState<VideoMetadata | null>(null)
+  const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [isLoadingVideo, setIsLoadingVideo] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { mode, toggleMode } = useModeStore()
+  const { token } = useAuthStore()
   const isExpert = mode === 'expert'
+
+  // Fetch video with auth headers and create blob URL
+  useEffect(() => {
+    if (!video || !token) {
+      setVideoBlobUrl(null)
+      return
+    }
+
+    let cancelled = false
+    const fetchVideo = async () => {
+      setIsLoadingVideo(true)
+      try {
+        const streamUrl = videosApi.getStreamUrl(video.id)
+        const response = await fetch(streamUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to load video')
+        }
+
+        const blob = await response.blob()
+        if (!cancelled) {
+          const url = URL.createObjectURL(blob)
+          setVideoBlobUrl(url)
+        }
+      } catch (error) {
+        console.error('Failed to load video:', error)
+        if (!cancelled) {
+          setUploadError('Failed to load video for playback')
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingVideo(false)
+        }
+      }
+    }
+
+    fetchVideo()
+
+    return () => {
+      cancelled = true
+      if (videoBlobUrl) {
+        URL.revokeObjectURL(videoBlobUrl)
+      }
+    }
+  }, [video, token])
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -84,20 +137,20 @@ export default function EditorPage() {
   }
 
   const openFileDialog = () => {
-    fileInputRef.current?.click()
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
+    }
   }
-
-  // Get video stream URL from API
-  const videoStreamUrl = video ? videosApi.getStreamUrl(video.id) : null
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Hidden file input */}
+      {/* Hidden file input - use sr-only instead of hidden for better browser support */}
       <input
         ref={fileInputRef}
         type="file"
         accept="video/*,.mp4,.mkv,.avi,.mov,.webm"
-        className="hidden"
+        className="sr-only"
+        style={{ position: 'absolute', left: '-9999px' }}
         onChange={handleFileSelect}
       />
 
@@ -185,23 +238,23 @@ export default function EditorPage() {
         <div className="flex-1 flex flex-col">
           {/* Video player */}
           <div className="flex-1 bg-bg-overlay flex items-center justify-center">
-            {isUploading ? (
+            {isUploading || isLoadingVideo ? (
               <div className="text-center">
                 <div className="w-20 h-20 rounded-full bg-bg-elevated flex items-center justify-center mx-auto mb-4">
                   <Loader2 className="w-10 h-10 text-primary animate-spin" />
                 </div>
                 <h3 className="text-lg font-semibold text-text-primary mb-2">
-                  Uploading video...
+                  {isUploading ? 'Uploading video...' : 'Loading video...'}
                 </h3>
                 <p className="text-text-secondary">
                   Please wait while we process your video
                 </p>
               </div>
-            ) : video && videoStreamUrl ? (
+            ) : video && videoBlobUrl ? (
               <video
                 className="max-w-full max-h-full"
                 controls
-                src={videoStreamUrl}
+                src={videoBlobUrl}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
               />
