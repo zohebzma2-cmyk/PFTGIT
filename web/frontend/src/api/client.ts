@@ -232,6 +232,7 @@ export interface ProcessingJob {
   started_at: string | null
   completed_at: string | null
   error: string | null
+  actions: FunscriptPoint[] | null
 }
 
 export interface ProcessingJobCreate {

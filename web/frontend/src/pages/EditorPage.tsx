@@ -25,7 +25,10 @@ import {
   Filter,
   Move,
   MousePointer,
-  FolderOpen
+  FolderOpen,
+  Box,
+  Eye,
+  EyeOff
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useModeStore } from '@/store/modeStore'
@@ -379,6 +382,210 @@ function Timeline({
   )
 }
 
+// Project file format (compatible with desktop .fgnproj)
+interface ProjectData {
+  version: string
+  video_path: string
+  video_id: string | null
+  funscript_actions: FunscriptPoint[]
+  settings: {
+    confidenceThreshold: number
+    smoothingFactor: number
+    minPointDistance: number
+    autoSmoothPeaks: boolean
+    invertOutput: boolean
+    limitRange: boolean
+    playbackSpeed: number
+  }
+  ui_state: {
+    timeline_zoom: number
+    edit_mode: 'select' | 'move'
+    show_heatmap: boolean
+    show_simulator_3d: boolean
+  }
+  created_at: string
+  updated_at: string
+}
+
+// 3D Simulator component - renders a cylinder that moves with funscript position
+function Simulator3D({ position, isPlaying }: { position: number, isPlaying: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const animationRef = useRef<number>(0)
+  const currentPosRef = useRef(position)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Smoothly interpolate to target position
+    const targetPos = position
+
+    const render = () => {
+      // Smooth interpolation
+      currentPosRef.current += (targetPos - currentPosRef.current) * 0.15
+
+      const width = canvas.width
+      const height = canvas.height
+      const centerX = width / 2
+      const baseY = height - 30
+
+      // Clear canvas
+      ctx.fillStyle = '#1a1a1a'
+      ctx.fillRect(0, 0, width, height)
+
+      // Calculate cylinder position (0 = bottom, 100 = top)
+      const cylinderHeight = 80
+      const cylinderWidth = 50
+      const maxTravel = height - 80
+      const yOffset = (currentPosRef.current / 100) * maxTravel
+
+      // Draw base platform
+      ctx.fillStyle = '#333'
+      ctx.fillRect(centerX - 40, baseY, 80, 20)
+
+      // Draw shaft (static background)
+      const gradient = ctx.createLinearGradient(centerX - 20, 0, centerX + 20, 0)
+      gradient.addColorStop(0, '#444')
+      gradient.addColorStop(0.5, '#666')
+      gradient.addColorStop(1, '#444')
+      ctx.fillStyle = gradient
+      ctx.fillRect(centerX - 20, baseY - maxTravel - 40, 40, maxTravel + 40)
+
+      // Draw moving cylinder
+      const cylinderY = baseY - yOffset - cylinderHeight
+
+      // Cylinder body gradient
+      const cylGradient = ctx.createLinearGradient(centerX - cylinderWidth/2, 0, centerX + cylinderWidth/2, 0)
+      cylGradient.addColorStop(0, '#2563eb')
+      cylGradient.addColorStop(0.3, '#60a5fa')
+      cylGradient.addColorStop(0.7, '#60a5fa')
+      cylGradient.addColorStop(1, '#1d4ed8')
+
+      // Draw cylinder body
+      ctx.fillStyle = cylGradient
+      ctx.beginPath()
+      ctx.roundRect(centerX - cylinderWidth/2, cylinderY, cylinderWidth, cylinderHeight, 8)
+      ctx.fill()
+
+      // Draw cylinder top (ellipse)
+      ctx.fillStyle = '#93c5fd'
+      ctx.beginPath()
+      ctx.ellipse(centerX, cylinderY, cylinderWidth/2, 10, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Draw cylinder bottom (ellipse)
+      ctx.fillStyle = '#1e40af'
+      ctx.beginPath()
+      ctx.ellipse(centerX, cylinderY + cylinderHeight, cylinderWidth/2, 10, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Draw position indicator
+      ctx.fillStyle = '#fff'
+      ctx.font = '12px monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText(`${Math.round(currentPosRef.current)}`, centerX, height - 8)
+
+      // Continue animation if playing or interpolating
+      if (isPlaying || Math.abs(currentPosRef.current - targetPos) > 0.5) {
+        animationRef.current = requestAnimationFrame(render)
+      }
+    }
+
+    render()
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current)
+      }
+    }
+  }, [position, isPlaying])
+
+  // Re-render when position changes
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Trigger a new render cycle
+    const render = () => {
+      const targetPos = position
+      currentPosRef.current += (targetPos - currentPosRef.current) * 0.15
+
+      const width = canvas.width
+      const height = canvas.height
+      const centerX = width / 2
+      const baseY = height - 30
+      const cylinderHeight = 80
+      const cylinderWidth = 50
+      const maxTravel = height - 80
+      const yOffset = (currentPosRef.current / 100) * maxTravel
+
+      ctx.fillStyle = '#1a1a1a'
+      ctx.fillRect(0, 0, width, height)
+
+      ctx.fillStyle = '#333'
+      ctx.fillRect(centerX - 40, baseY, 80, 20)
+
+      const gradient = ctx.createLinearGradient(centerX - 20, 0, centerX + 20, 0)
+      gradient.addColorStop(0, '#444')
+      gradient.addColorStop(0.5, '#666')
+      gradient.addColorStop(1, '#444')
+      ctx.fillStyle = gradient
+      ctx.fillRect(centerX - 20, baseY - maxTravel - 40, 40, maxTravel + 40)
+
+      const cylinderY = baseY - yOffset - cylinderHeight
+
+      const cylGradient = ctx.createLinearGradient(centerX - cylinderWidth/2, 0, centerX + cylinderWidth/2, 0)
+      cylGradient.addColorStop(0, '#2563eb')
+      cylGradient.addColorStop(0.3, '#60a5fa')
+      cylGradient.addColorStop(0.7, '#60a5fa')
+      cylGradient.addColorStop(1, '#1d4ed8')
+
+      ctx.fillStyle = cylGradient
+      ctx.beginPath()
+      ctx.roundRect(centerX - cylinderWidth/2, cylinderY, cylinderWidth, cylinderHeight, 8)
+      ctx.fill()
+
+      ctx.fillStyle = '#93c5fd'
+      ctx.beginPath()
+      ctx.ellipse(centerX, cylinderY, cylinderWidth/2, 10, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.fillStyle = '#1e40af'
+      ctx.beginPath()
+      ctx.ellipse(centerX, cylinderY + cylinderHeight, cylinderWidth/2, 10, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.fillStyle = '#fff'
+      ctx.font = '12px monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText(`${Math.round(currentPosRef.current)}`, centerX, height - 8)
+
+      if (Math.abs(currentPosRef.current - targetPos) > 0.5) {
+        animationRef.current = requestAnimationFrame(render)
+      }
+    }
+
+    animationRef.current = requestAnimationFrame(render)
+  }, [position])
+
+  return (
+    <div className="bg-bg-base rounded-lg overflow-hidden">
+      <canvas
+        ref={canvasRef}
+        width={120}
+        height={200}
+        className="w-full h-full"
+      />
+    </div>
+  )
+}
+
 // Heatmap visualization component
 function Heatmap({ points, duration }: { points: FunscriptPoint[], duration: number }) {
   const segments = 50
@@ -484,10 +691,19 @@ export default function EditorPage() {
     playbackSpeed: 1.0,
   })
 
+  // UI visibility state
+  const [showSimulator3D, setShowSimulator3D] = useState(true)
+  const [showHeatmap, setShowHeatmap] = useState(true)
+
+  // Project state
+  const [projectName, setProjectName] = useState<string>('')
+  const [projectDirty, setProjectDirty] = useState(false)
+
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const funscriptInputRef = useRef<HTMLInputElement>(null)
+  const projectInputRef = useRef<HTMLInputElement>(null)
 
   // Store hooks
   const { mode, toggleMode } = useModeStore()
@@ -517,6 +733,160 @@ export default function EditorPage() {
       setSelectedPoints(new Set())
     }
   }, [historyIndex, history])
+
+  // Mark project as dirty when points change
+  useEffect(() => {
+    if (funscriptPoints.length > 0) {
+      setProjectDirty(true)
+    }
+  }, [funscriptPoints])
+
+  // Calculate current position from funscript
+  const currentPosition = useMemo(() => {
+    if (funscriptPoints.length === 0) return 50
+
+    // Find the last point before or at current time
+    let prev: FunscriptPoint | undefined
+    for (let i = funscriptPoints.length - 1; i >= 0; i--) {
+      if (funscriptPoints[i].at <= currentTime) {
+        prev = funscriptPoints[i]
+        break
+      }
+    }
+    const next = funscriptPoints.find((p: FunscriptPoint) => p.at > currentTime)
+
+    if (!prev) return next?.pos ?? 50
+    if (!next) return prev.pos
+
+    // Interpolate between points
+    const t = (currentTime - prev.at) / (next.at - prev.at)
+    return Math.round(prev.pos + (next.pos - prev.pos) * t)
+  }, [funscriptPoints, currentTime])
+
+  // Save project to file
+  const saveProject = useCallback(() => {
+    const projectData: ProjectData = {
+      version: '1.0.0',
+      video_path: video?.original_filename || '',
+      video_id: video?.id || null,
+      funscript_actions: funscriptPoints,
+      settings: settings,
+      ui_state: {
+        timeline_zoom: timelineZoom,
+        edit_mode: editMode,
+        show_heatmap: showHeatmap,
+        show_simulator_3d: showSimulator3D,
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+
+    const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const filename = projectName || video?.original_filename?.replace(/\.[^/.]+$/, '') || 'project'
+    a.download = `${filename}.fgnproj`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+
+    setProjectDirty(false)
+    setProjectName(filename)
+  }, [video, funscriptPoints, settings, timelineZoom, editMode, showHeatmap, showSimulator3D, projectName])
+
+  // Load project from file
+  const handleProjectLoad = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const projectData: ProjectData = JSON.parse(text)
+
+      // Restore funscript points
+      if (projectData.funscript_actions && Array.isArray(projectData.funscript_actions)) {
+        const points = projectData.funscript_actions.map(a => ({
+          at: a.at,
+          pos: Math.max(0, Math.min(100, a.pos))
+        })).sort((a, b) => a.at - b.at)
+        setFunscriptPoints(points)
+        pushHistory(points)
+      }
+
+      // Restore settings
+      if (projectData.settings) {
+        setSettings(prev => ({ ...prev, ...projectData.settings }))
+      }
+
+      // Restore UI state
+      if (projectData.ui_state) {
+        if (projectData.ui_state.timeline_zoom) setTimelineZoom(projectData.ui_state.timeline_zoom)
+        if (projectData.ui_state.edit_mode) setEditMode(projectData.ui_state.edit_mode)
+        if (typeof projectData.ui_state.show_heatmap === 'boolean') setShowHeatmap(projectData.ui_state.show_heatmap)
+        if (typeof projectData.ui_state.show_simulator_3d === 'boolean') setShowSimulator3D(projectData.ui_state.show_simulator_3d)
+      }
+
+      // Set project name from filename
+      const name = file.name.replace(/\.fgnproj$/i, '')
+      setProjectName(name)
+      setProjectDirty(false)
+      setSelectedPoints(new Set())
+
+    } catch (error) {
+      console.error('Failed to load project:', error)
+      alert('Failed to load project: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    } finally {
+      if (projectInputRef.current) {
+        projectInputRef.current.value = ''
+      }
+    }
+  }, [pushHistory])
+
+  const openProjectDialog = () => {
+    projectInputRef.current?.click()
+  }
+
+  // Autosave to localStorage
+  useEffect(() => {
+    if (!video || funscriptPoints.length === 0) return
+
+    const autosaveData = {
+      video_id: video.id,
+      funscript_actions: funscriptPoints,
+      settings: settings,
+      timestamp: Date.now(),
+    }
+
+    localStorage.setItem(`fungen_autosave_${video.id}`, JSON.stringify(autosaveData))
+  }, [video, funscriptPoints, settings])
+
+  // Restore from autosave on video load
+  useEffect(() => {
+    if (!video) return
+
+    const autosaveKey = `fungen_autosave_${video.id}`
+    const saved = localStorage.getItem(autosaveKey)
+
+    if (saved) {
+      try {
+        const autosaveData = JSON.parse(saved)
+        // Only restore if within last 24 hours
+        if (Date.now() - autosaveData.timestamp < 24 * 60 * 60 * 1000) {
+          if (autosaveData.funscript_actions?.length > 0 && funscriptPoints.length === 0) {
+            setFunscriptPoints(autosaveData.funscript_actions)
+            pushHistory(autosaveData.funscript_actions)
+            if (autosaveData.settings) {
+              setSettings(prev => ({ ...prev, ...autosaveData.settings }))
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to restore autosave:', e)
+      }
+    }
+  }, [video])
 
   // Fetch video with auth headers and create blob URL
   useEffect(() => {
@@ -901,23 +1271,34 @@ export default function EditorPage() {
             clearInterval(pollInterval)
 
             if (updatedJob.stage === 'complete') {
-              const videoDuration = duration || (video.duration_ms ?? 60000)
-              const demoPoints: FunscriptPoint[] = []
-              // Generate more realistic looking points
-              let lastPos = 50
-              for (let t = 0; t < videoDuration; t += 200 + Math.random() * 300) {
-                const targetPos = Math.random() > 0.5 ?
-                  Math.min(100, lastPos + 20 + Math.random() * 40) :
-                  Math.max(0, lastPos - 20 - Math.random() * 40)
-                lastPos = targetPos
-                demoPoints.push({
-                  at: Math.round(t),
-                  pos: Math.round(targetPos)
-                })
+              // Use actions from backend if available
+              if (updatedJob.actions && updatedJob.actions.length > 0) {
+                const points: FunscriptPoint[] = updatedJob.actions.map(a => ({
+                  at: a.at,
+                  pos: Math.max(0, Math.min(100, a.pos))
+                })).sort((a, b) => a.at - b.at)
+                setFunscriptPoints(points)
+                pushHistory(points)
+                setProcessingMessage(`Funscript generated! ${points.length} actions created.`)
+              } else {
+                // Fallback: generate realistic demo points if no actions returned
+                const videoDuration = duration || (video.duration_ms ?? 60000)
+                const demoPoints: FunscriptPoint[] = []
+                let direction = 1
+                for (let t = 0; t < videoDuration; t += 150 + Math.random() * 250) {
+                  const targetPos = direction === 1
+                    ? Math.min(100, 70 + Math.random() * 30)
+                    : Math.max(0, Math.random() * 30)
+                  demoPoints.push({
+                    at: Math.round(t),
+                    pos: Math.round(targetPos)
+                  })
+                  if (Math.random() < 0.3) direction *= -1
+                }
+                setFunscriptPoints(demoPoints)
+                pushHistory(demoPoints)
+                setProcessingMessage('Funscript generated successfully!')
               }
-              setFunscriptPoints(demoPoints)
-              pushHistory(demoPoints)
-              setProcessingMessage('Funscript generated successfully!')
             } else {
               setProcessingMessage(`Processing failed: ${updatedJob.error || 'Unknown error'}`)
             }
@@ -1045,17 +1426,27 @@ export default function EditorPage() {
         style={{ position: 'absolute', left: '-9999px' }}
         onChange={handleFunscriptImport}
       />
+      <input
+        ref={projectInputRef}
+        type="file"
+        accept=".fgnproj,.json"
+        className="sr-only"
+        style={{ position: 'absolute', left: '-9999px' }}
+        onChange={handleProjectLoad}
+      />
 
       {/* Toolbar */}
       <div className="h-12 bg-bg-surface border-b border-border flex items-center px-2 gap-1">
         {/* File actions */}
         <div className="flex items-center gap-1 pr-2 border-r border-border">
           <ToolbarButton icon={Upload} label="Open Video" onClick={openFileDialog} />
+          <ToolbarButton icon={FolderOpen} label="Open Project" onClick={openProjectDialog} />
           <ToolbarButton icon={FileUp} label="Import Funscript" onClick={openFunscriptDialog} />
           <ToolbarButton
             icon={Save}
-            label="Save Project"
-            disabled={!video}
+            label={`Save Project${projectDirty ? ' *' : ''}`}
+            disabled={funscriptPoints.length === 0}
+            onClick={saveProject}
           />
           <ToolbarButton
             icon={Download}
@@ -1338,7 +1729,7 @@ export default function EditorPage() {
           </div>
 
           {/* Heatmap */}
-          {funscriptPoints.length > 0 && (
+          {showHeatmap && funscriptPoints.length > 0 && (
             <div className="h-8 bg-bg-surface border-t border-border px-2 py-1">
               <Heatmap points={funscriptPoints} duration={duration || 60000} />
             </div>
@@ -1454,6 +1845,26 @@ export default function EditorPage() {
                       />
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* 3D Simulator */}
+              {showSimulator3D && (
+                <div className="card">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-text-primary flex items-center gap-2">
+                      <Box className="w-4 h-4" />
+                      3D Simulator
+                    </h3>
+                    <button
+                      onClick={() => setShowSimulator3D(false)}
+                      className="text-text-muted hover:text-text-secondary"
+                      title="Hide simulator"
+                    >
+                      <EyeOff className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <Simulator3D position={currentPosition} isPlaying={isPlaying} />
                 </div>
               )}
 
@@ -1599,6 +2010,36 @@ export default function EditorPage() {
                   </button>
                 </div>
               )}
+
+              {/* View Controls */}
+              <div className="card">
+                <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
+                  <Eye className="w-4 h-4" />
+                  View Options
+                </h3>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={showSimulator3D}
+                      onChange={(e) => setShowSimulator3D(e.target.checked)}
+                      className="accent-primary w-4 h-4"
+                    />
+                    <Box className="w-4 h-4 text-text-muted" />
+                    <span className="text-text-secondary">3D Simulator</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={showHeatmap}
+                      onChange={(e) => setShowHeatmap(e.target.checked)}
+                      className="accent-primary w-4 h-4"
+                    />
+                    <Activity className="w-4 h-4 text-text-muted" />
+                    <span className="text-text-secondary">Heatmap</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
         </div>
