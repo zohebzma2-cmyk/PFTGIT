@@ -883,6 +883,10 @@ function MenuBar({
   onShowKeyboardShortcuts,
   onShowSettings,
   onShowFilters,
+  onShowAbout,
+  onSaveChapters,
+  onLoadChapters,
+  onClearChapters,
   theme,
   onToggleTheme,
 }: {
@@ -910,6 +914,10 @@ function MenuBar({
   onShowKeyboardShortcuts: () => void
   onShowSettings: () => void
   onShowFilters: () => void
+  onShowAbout: () => void
+  onSaveChapters: () => void
+  onLoadChapters: () => void
+  onClearChapters: () => void
   theme: 'dark' | 'light'
   onToggleTheme: () => void
 }) {
@@ -925,9 +933,9 @@ function MenuBar({
       { label: 'Export Funscript', shortcut: 'Ctrl+E', icon: Download, onClick: onExportFunscript },
       { separator: true, label: '' },
       { label: 'Chapters', icon: Bookmark, submenu: [
-        { label: 'Save Chapters', icon: Save, onClick: () => {} },
-        { label: 'Load Chapters', icon: FolderOpen, onClick: () => {} },
-        { label: 'Clear Chapters', icon: Trash2, onClick: () => {} },
+        { label: 'Save Chapters', icon: Save, onClick: onSaveChapters },
+        { label: 'Load Chapters', icon: FolderOpen, onClick: onLoadChapters },
+        { label: 'Clear Chapters', icon: Trash2, onClick: onClearChapters },
       ]},
     ],
     Edit: [
@@ -961,7 +969,7 @@ function MenuBar({
     Help: [
       { label: 'Keyboard Shortcuts', shortcut: 'F1', icon: Keyboard, onClick: onShowKeyboardShortcuts },
       { separator: true, label: '' },
-      { label: 'About FunGen', icon: Info, onClick: () => {} },
+      { label: 'About FunGen', icon: Info, onClick: onShowAbout },
       { label: 'GitHub', icon: Github, onClick: () => window.open('https://github.com', '_blank') },
     ],
   }
@@ -1141,6 +1149,59 @@ function KeyboardShortcutsDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex justify-end mt-4 pt-4 border-t border-border">
+          <button className="btn-primary text-sm" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// About dialog component
+function AboutDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-bg-surface rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+            <Info className="w-5 h-5" />
+            About FunGen
+          </h2>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 mx-auto mb-4 bg-primary rounded-xl flex items-center justify-center">
+            <Wand2 className="w-8 h-8 text-white" />
+          </div>
+          <h3 className="text-xl font-bold text-text-primary">FunGen Web</h3>
+          <p className="text-sm text-text-muted">Version 1.0.0</p>
+        </div>
+
+        <div className="space-y-3 text-sm text-text-secondary">
+          <p>
+            AI-powered funscript generator for creating synchronized haptic feedback scripts from video content.
+          </p>
+          <p>
+            Features include automatic motion detection, manual editing tools, real-time preview, and device connectivity.
+          </p>
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-border">
+          <div className="flex justify-center gap-4">
+            <button
+              className="btn-secondary text-sm flex items-center gap-2"
+              onClick={() => window.open('https://github.com', '_blank')}
+            >
+              <Github className="w-4 h-4" />
+              GitHub
+            </button>
+          </div>
+        </div>
+
+        <div className="flex justify-end mt-4">
           <button className="btn-primary text-sm" onClick={onClose}>Close</button>
         </div>
       </div>
@@ -1393,6 +1454,7 @@ export default function EditorPage() {
   const [showWaveform, setShowWaveform] = useState(false)
   const [showChapterList, setShowChapterList] = useState(false)
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
+  const [showAboutDialog, setShowAboutDialog] = useState(false)
 
   // Timeline 2 state (secondary axis for roll)
   const [funscriptPoints2, setFunscriptPoints2] = useState<FunscriptPoint[]>([])
@@ -2346,6 +2408,60 @@ export default function EditorPage() {
     setChapters(chapters.filter(ch => ch.id !== id))
   }, [chapters])
 
+  // Save chapters to file
+  const saveChapters = useCallback(() => {
+    if (chapters.length === 0) {
+      alert('No chapters to save')
+      return
+    }
+    const chaptersData = {
+      version: '1.0',
+      chapters: chapters
+    }
+    const blob = new Blob([JSON.stringify(chaptersData, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const filename = projectName || video?.original_filename?.replace(/\.[^/.]+$/, '') || 'chapters'
+    a.download = `${filename}.chapters.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [chapters, projectName, video])
+
+  // Load chapters from file
+  const loadChapters = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      try {
+        const text = await file.text()
+        const data = JSON.parse(text)
+        if (data.chapters && Array.isArray(data.chapters)) {
+          setChapters(data.chapters)
+        } else {
+          alert('Invalid chapters file format')
+        }
+      } catch (error) {
+        console.error('Failed to load chapters:', error)
+        alert('Failed to load chapters file')
+      }
+    }
+    input.click()
+  }, [])
+
+  // Clear all chapters
+  const clearChapters = useCallback(() => {
+    if (chapters.length === 0) return
+    if (confirm('Are you sure you want to clear all chapters?')) {
+      setChapters([])
+    }
+  }, [chapters])
+
   // Toggle theme
   const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark')
@@ -2418,6 +2534,10 @@ export default function EditorPage() {
         onShowKeyboardShortcuts={() => setShowKeyboardShortcuts(true)}
         onShowSettings={() => setShowSettingsModal(true)}
         onShowFilters={() => setShowFiltersModal(true)}
+        onShowAbout={() => setShowAboutDialog(true)}
+        onSaveChapters={saveChapters}
+        onLoadChapters={loadChapters}
+        onClearChapters={clearChapters}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
@@ -3423,6 +3543,13 @@ export default function EditorPage() {
                 <ChevronRight className="w-4 h-4" />
                 Keyframes - Keep only peaks and valleys
               </button>
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('timeShift', 100); setShowFiltersModal(false); }}
+              >
+                <ChevronRight className="w-4 h-4" />
+                Time Shift (+100ms) - Move points forward in time
+              </button>
             </div>
 
             <div className="flex justify-end mt-6">
@@ -3440,6 +3567,11 @@ export default function EditorPage() {
       {/* Keyboard Shortcuts Dialog */}
       {showKeyboardShortcuts && (
         <KeyboardShortcutsDialog onClose={() => setShowKeyboardShortcuts(false)} />
+      )}
+
+      {/* About Dialog */}
+      {showAboutDialog && (
+        <AboutDialog onClose={() => setShowAboutDialog(false)} />
       )}
     </div>
   )
