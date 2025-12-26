@@ -43,7 +43,9 @@ import {
   List,
   BarChart3,
   Waves,
-  SplitSquareVertical
+  SplitSquareVertical,
+  PanelRightClose,
+  PanelRightOpen
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useModeStore } from '@/store/modeStore'
@@ -995,12 +997,12 @@ function MenuBar({
   }, [activeMenu])
 
   return (
-    <div className="flex items-center h-8 bg-bg-elevated border-b border-border px-2 gap-1">
+    <div className="flex items-center h-8 bg-bg-elevated border-b border-border px-1 sm:px-2 gap-0.5 sm:gap-1 overflow-x-auto scrollbar-thin">
       {Object.entries(menus).map(([menuName, items]) => (
-        <div key={menuName} className="relative">
+        <div key={menuName} className="relative flex-shrink-0">
           <button
             className={clsx(
-              'px-3 py-1 text-sm rounded hover:bg-bg-surface transition-colors',
+              'px-2 sm:px-3 py-1 text-xs sm:text-sm rounded hover:bg-bg-surface transition-colors whitespace-nowrap',
               activeMenu === menuName && 'bg-bg-surface'
             )}
             onClick={(e) => {
@@ -1011,7 +1013,7 @@ function MenuBar({
             {menuName}
           </button>
           {activeMenu === menuName && (
-            <div className="absolute left-0 top-full mt-1 bg-bg-surface border border-border rounded-lg shadow-xl z-50 min-w-[220px] py-1">
+            <div className="absolute left-0 top-full mt-1 bg-bg-surface border border-border rounded-lg shadow-xl z-50 min-w-[200px] sm:min-w-[220px] py-1 max-h-[70vh] overflow-y-auto">
               {items.map((item, idx) => (
                 item.separator ? (
                   <div key={idx} className="h-px bg-border mx-2 my-1" />
@@ -1455,6 +1457,21 @@ export default function EditorPage() {
   const [showChapterList, setShowChapterList] = useState(false)
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
   const [showAboutDialog, setShowAboutDialog] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  // Auto-collapse sidebar on small screens
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setSidebarCollapsed(true)
+      } else {
+        setSidebarCollapsed(false)
+      }
+    }
+    handleResize() // Check on mount
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // Timeline 2 state (secondary axis for roll)
   const [funscriptPoints2, setFunscriptPoints2] = useState<FunscriptPoint[]>([])
@@ -2542,8 +2559,8 @@ export default function EditorPage() {
         onToggleTheme={toggleTheme}
       />
 
-      {/* Toolbar */}
-      <div className="h-12 bg-bg-surface border-b border-border flex items-center px-2 gap-1">
+      {/* Toolbar - scrollable on small screens */}
+      <div className="h-12 bg-bg-surface border-b border-border flex items-center px-2 gap-1 overflow-x-auto scrollbar-thin">
         {/* File actions */}
         <div className="flex items-center gap-1 pr-2 border-r border-border">
           <ToolbarButton icon={Upload} label="Open Video" onClick={openFileDialog} />
@@ -2755,20 +2772,20 @@ export default function EditorPage() {
       </div>
 
       {/* Main editor area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* Video area */}
-        <div className="flex-1 flex flex-col">
-          {/* Video player */}
-          <div className="flex-1 bg-bg-overlay flex items-center justify-center relative">
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Video player - responsive with aspect ratio */}
+          <div className="flex-1 bg-bg-overlay flex items-center justify-center relative min-h-[200px] sm:min-h-[300px]">
             {isUploading || isLoadingVideo ? (
-              <div className="text-center">
-                <div className="w-20 h-20 rounded-full bg-bg-elevated flex items-center justify-center mx-auto mb-4">
-                  <Loader2 className="w-10 h-10 text-primary animate-spin" />
+              <div className="text-center px-4">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-bg-elevated flex items-center justify-center mx-auto mb-4">
+                  <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 text-primary animate-spin" />
                 </div>
-                <h3 className="text-lg font-semibold text-text-primary mb-2">
+                <h3 className="text-base sm:text-lg font-semibold text-text-primary mb-2">
                   {isUploading ? 'Uploading video...' : 'Loading video...'}
                 </h3>
-                <p className="text-text-secondary">
+                <p className="text-sm text-text-secondary">
                   Please wait while we process your video
                 </p>
               </div>
@@ -2776,12 +2793,12 @@ export default function EditorPage() {
               <>
                 <video
                   ref={videoRef}
-                  className="max-w-full max-h-full"
+                  className="max-w-full max-h-full w-auto h-auto object-contain"
                   src={videoBlobUrl}
                   onClick={togglePlayPause}
                 />
                 {/* Time overlay */}
-                <div className="absolute bottom-4 left-4 bg-black/70 px-2 py-1 rounded text-xs text-white font-mono">
+                <div className="absolute bottom-2 left-2 sm:bottom-4 sm:left-4 bg-black/70 px-2 py-1 rounded text-xs text-white font-mono">
                   {formatTime(currentTime)}
                 </div>
                 {/* Current position indicator */}
@@ -2852,11 +2869,12 @@ export default function EditorPage() {
             </div>
           )}
 
-          {/* Timeline 1 */}
-          <div className="h-48 bg-bg-surface border-t border-border">
+          {/* Timeline 1 - responsive height */}
+          <div className="h-32 sm:h-40 lg:h-48 bg-bg-surface border-t border-border">
             <div className="px-2 py-1 text-xs text-text-muted border-b border-border flex items-center gap-2">
               <SplitSquareVertical className="w-3 h-3" />
-              Timeline 1 (Stroke)
+              <span className="hidden sm:inline">Timeline 1 (Stroke)</span>
+              <span className="sm:hidden">T1</span>
             </div>
             {video || funscriptPoints.length > 0 ? (
               <Timeline
@@ -2878,12 +2896,13 @@ export default function EditorPage() {
             )}
           </div>
 
-          {/* Timeline 2 (Roll axis) */}
+          {/* Timeline 2 (Roll axis) - responsive height */}
           {showTimeline2 && (
-            <div className="h-36 bg-bg-surface border-t border-border">
+            <div className="h-28 sm:h-32 lg:h-36 bg-bg-surface border-t border-border">
               <div className="px-2 py-1 text-xs text-text-muted border-b border-border flex items-center gap-2">
                 <SplitSquareVertical className="w-3 h-3" />
-                Timeline 2 (Roll)
+                <span className="hidden sm:inline">Timeline 2 (Roll)</span>
+                <span className="sm:hidden">T2</span>
               </div>
               {video || funscriptPoints2.length > 0 ? (
                 <Timeline
@@ -2921,13 +2940,34 @@ export default function EditorPage() {
           )}
         </div>
 
+        {/* Sidebar toggle button - visible on small screens */}
+        <button
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-bg-surface border border-border rounded-l-lg p-2 lg:hidden shadow-lg"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+        >
+          {sidebarCollapsed ? <PanelRightOpen className="w-5 h-5" /> : <PanelRightClose className="w-5 h-5" />}
+        </button>
+
         {/* Right sidebar - Control Panel */}
-        <div className="w-72 bg-bg-surface border-l border-border overflow-y-auto">
-          <div className="p-4">
-            <h2 className="font-semibold text-text-primary mb-4 flex items-center gap-2">
-              {isExpert ? <Sliders className="w-5 h-5" /> : <Settings className="w-5 h-5" />}
-              {isExpert ? 'Expert Controls' : 'Control Panel'}
-            </h2>
+        <div className={clsx(
+          "bg-bg-surface border-l border-border overflow-y-auto transition-all duration-300 absolute lg:relative right-0 top-0 bottom-0 z-10",
+          sidebarCollapsed ? "w-0 opacity-0 pointer-events-none lg:w-64 lg:opacity-100 lg:pointer-events-auto xl:w-72" : "w-72 sm:w-64 lg:w-64 xl:w-72"
+        )}>
+          <div className="p-3 sm:p-4 min-w-[256px]">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-text-primary flex items-center gap-2">
+                {isExpert ? <Sliders className="w-5 h-5" /> : <Settings className="w-5 h-5" />}
+                <span className="hidden sm:inline">{isExpert ? 'Expert Controls' : 'Control Panel'}</span>
+                <span className="sm:hidden">Controls</span>
+              </h2>
+              <button
+                className="lg:hidden p-1 hover:bg-bg-elevated rounded"
+                onClick={() => setSidebarCollapsed(true)}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
             <div className="space-y-4">
               {/* Simple Mode: Quick Actions */}

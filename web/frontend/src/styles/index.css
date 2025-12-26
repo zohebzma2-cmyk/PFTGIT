@@ -95,4 +95,38 @@
   .gradient-spotify {
     background: linear-gradient(180deg, rgba(29, 185, 84, 0.4) 0%, transparent 100%);
   }
+
+  /* Thin scrollbar for horizontal scroll */
+  .scrollbar-thin::-webkit-scrollbar {
+    @apply h-1.5;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-text-disabled/50 rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-text-muted;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Responsive typography */
+@media (max-width: 640px) {
+  html {
+    font-size: 14px;
+  }
 }
