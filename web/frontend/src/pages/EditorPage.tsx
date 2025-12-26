@@ -72,6 +72,57 @@ const filters = {
     return result
   },
 
+  // Savitzky-Golay filter - polynomial smoothing that preserves peaks
+  savitzkyGolay: (points: FunscriptPoint[], windowSize: number = 5): FunscriptPoint[] => {
+    if (points.length < windowSize) return points
+    const halfWindow = Math.floor(windowSize / 2)
+    const result: FunscriptPoint[] = []
+
+    // Savitzky-Golay coefficients for quadratic polynomial (window 5)
+    const coeffs = [-3, 12, 17, 12, -3].map(c => c / 35)
+
+    for (let i = 0; i < points.length; i++) {
+      if (i < halfWindow || i >= points.length - halfWindow) {
+        result.push(points[i])
+      } else {
+        let smoothedPos = 0
+        for (let j = -halfWindow; j <= halfWindow; j++) {
+          smoothedPos += points[i + j].pos * coeffs[j + halfWindow]
+        }
+        result.push({ at: points[i].at, pos: Math.max(0, Math.min(100, Math.round(smoothedPos))) })
+      }
+    }
+    return result
+  },
+
+  // Anti-jerk filter - removes sudden jerky movements
+  antiJerk: (points: FunscriptPoint[], threshold: number = 30): FunscriptPoint[] => {
+    if (points.length < 3) return points
+    const result: FunscriptPoint[] = [points[0]]
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = result[result.length - 1]
+      const curr = points[i]
+      const next = points[i + 1]
+
+      // Check if this is a jerk (sudden change that immediately reverses)
+      const changeToPrev = curr.pos - prev.pos
+      const changeToNext = next.pos - curr.pos
+
+      // If direction reverses sharply and change is above threshold
+      if (Math.sign(changeToPrev) !== Math.sign(changeToNext) &&
+          Math.abs(changeToPrev) > threshold && Math.abs(changeToNext) > threshold) {
+        // Smooth out the jerk by averaging
+        const smoothedPos = Math.round((prev.pos + next.pos) / 2)
+        result.push({ at: curr.at, pos: Math.max(0, Math.min(100, smoothedPos)) })
+      } else {
+        result.push(curr)
+      }
+    }
+    result.push(points[points.length - 1])
+    return result
+  },
+
   amplify: (points: FunscriptPoint[], amount: number): FunscriptPoint[] => {
     const factor = 1 + (amount / 100)
     return points.map(p => ({
@@ -82,6 +133,93 @@ const filters = {
 
   invert: (points: FunscriptPoint[]): FunscriptPoint[] => {
     return points.map(p => ({ at: p.at, pos: 100 - p.pos }))
+  },
+
+  // Clamp filter - constrain values to a range
+  clamp: (points: FunscriptPoint[], minVal: number = 10, maxVal: number = 90): FunscriptPoint[] => {
+    return points.map(p => ({
+      at: p.at,
+      pos: Math.max(minVal, Math.min(maxVal, p.pos))
+    }))
+  },
+
+  // Time shift - move all points forward or backward in time
+  timeShift: (points: FunscriptPoint[], offsetMs: number): FunscriptPoint[] => {
+    return points
+      .map(p => ({ at: p.at + offsetMs, pos: p.pos }))
+      .filter(p => p.at >= 0)
+      .sort((a, b) => a.at - b.at)
+  },
+
+  // RDP simplification - Ramer-Douglas-Peucker algorithm
+  rdpSimplify: (points: FunscriptPoint[], epsilon: number = 3): FunscriptPoint[] => {
+    if (points.length < 3) return points
+
+    // Find the point with maximum distance from line between first and last
+    const findMaxDistance = (pts: FunscriptPoint[], start: number, end: number): { index: number, distance: number } => {
+      let maxDist = 0
+      let maxIndex = start
+      const first = pts[start]
+      const last = pts[end]
+      const dx = last.at - first.at
+      const dy = last.pos - first.pos
+      const len = Math.sqrt(dx * dx + dy * dy)
+
+      for (let i = start + 1; i < end; i++) {
+        // Perpendicular distance from point to line
+        const dist = len === 0 ? Math.abs(pts[i].pos - first.pos) :
+          Math.abs(dy * (pts[i].at - first.at) - dx * (pts[i].pos - first.pos)) / len
+        if (dist > maxDist) {
+          maxDist = dist
+          maxIndex = i
+        }
+      }
+      return { index: maxIndex, distance: maxDist }
+    }
+
+    const rdp = (pts: FunscriptPoint[], start: number, end: number, result: FunscriptPoint[]): void => {
+      if (end <= start + 1) return
+
+      const { index, distance } = findMaxDistance(pts, start, end)
+      if (distance > epsilon) {
+        rdp(pts, start, index, result)
+        result.push(pts[index])
+        rdp(pts, index, end, result)
+      }
+    }
+
+    const result: FunscriptPoint[] = [points[0]]
+    rdp(points, 0, points.length - 1, result)
+    result.push(points[points.length - 1])
+
+    return result.sort((a, b) => a.at - b.at)
+  },
+
+  // Keyframe detection - identify peaks and valleys
+  keyframes: (points: FunscriptPoint[], minChange: number = 20): FunscriptPoint[] => {
+    if (points.length < 3) return points
+    const result: FunscriptPoint[] = [points[0]]
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = points[i - 1]
+      const curr = points[i]
+      const next = points[i + 1]
+
+      // Check if this is a peak (higher than neighbors) or valley (lower than neighbors)
+      const isPeak = curr.pos > prev.pos && curr.pos > next.pos
+      const isValley = curr.pos < prev.pos && curr.pos < next.pos
+
+      // Check if the change is significant
+      const changeFromPrev = Math.abs(curr.pos - prev.pos)
+      const changeToNext = Math.abs(next.pos - curr.pos)
+
+      if ((isPeak || isValley) && (changeFromPrev >= minChange || changeToNext >= minChange)) {
+        result.push(curr)
+      }
+    }
+
+    result.push(points[points.length - 1])
+    return result
   },
 
   speedLimit: (points: FunscriptPoint[], maxSpeed: number): FunscriptPoint[] => {
@@ -586,6 +724,47 @@ function Simulator3D({ position, isPlaying }: { position: number, isPlaying: boo
   )
 }
 
+// Movement Gauge component - shows current position and speed
+function MovementGauge({ position, speed }: { position: number, speed: number }) {
+  const normalizedSpeed = Math.min(100, Math.abs(speed) / 5) // Normalize speed to 0-100
+  const direction = speed > 0 ? 'up' : speed < 0 ? 'down' : 'neutral'
+
+  return (
+    <div className="bg-bg-base rounded-lg p-3">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-xs text-text-muted">Position</span>
+        <span className="text-sm font-mono text-text-primary">{Math.round(position)}</span>
+      </div>
+      {/* Position bar */}
+      <div className="h-4 bg-bg-elevated rounded-full overflow-hidden mb-3">
+        <div
+          className="h-full bg-primary transition-all duration-100"
+          style={{ width: `${position}%` }}
+        />
+      </div>
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-xs text-text-muted">Speed</span>
+        <span className={clsx(
+          "text-sm font-mono",
+          direction === 'up' ? 'text-green-400' : direction === 'down' ? 'text-red-400' : 'text-text-muted'
+        )}>
+          {direction === 'up' ? '↑' : direction === 'down' ? '↓' : '•'} {Math.round(Math.abs(speed))} u/s
+        </span>
+      </div>
+      {/* Speed bar */}
+      <div className="h-4 bg-bg-elevated rounded-full overflow-hidden">
+        <div
+          className={clsx(
+            "h-full transition-all duration-100",
+            direction === 'up' ? 'bg-green-500' : direction === 'down' ? 'bg-red-500' : 'bg-gray-500'
+          )}
+          style={{ width: `${normalizedSpeed}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 // Heatmap visualization component
 function Heatmap({ points, duration }: { points: FunscriptPoint[], duration: number }) {
   const segments = 50
@@ -699,6 +878,9 @@ export default function EditorPage() {
   const [projectName, setProjectName] = useState<string>('')
   const [projectDirty, setProjectDirty] = useState(false)
 
+  // Clipboard state for copy/paste
+  const [clipboard, setClipboard] = useState<FunscriptPoint[]>([])
+
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -761,6 +943,32 @@ export default function EditorPage() {
     // Interpolate between points
     const t = (currentTime - prev.at) / (next.at - prev.at)
     return Math.round(prev.pos + (next.pos - prev.pos) * t)
+  }, [funscriptPoints, currentTime])
+
+  // Calculate current speed from funscript (units per second)
+  const currentSpeed = useMemo(() => {
+    if (funscriptPoints.length < 2) return 0
+
+    // Find surrounding points
+    let prevIdx = -1
+    for (let i = funscriptPoints.length - 1; i >= 0; i--) {
+      if (funscriptPoints[i].at <= currentTime) {
+        prevIdx = i
+        break
+      }
+    }
+
+    if (prevIdx === -1) return 0
+    if (prevIdx >= funscriptPoints.length - 1) return 0
+
+    const prev = funscriptPoints[prevIdx]
+    const next = funscriptPoints[prevIdx + 1]
+    const dt = next.at - prev.at
+    if (dt === 0) return 0
+
+    // Calculate speed in units per second (positive = moving up, negative = moving down)
+    const dp = next.pos - prev.pos
+    return (dp / dt) * 1000
   }, [funscriptPoints, currentTime])
 
   // Save project to file
@@ -969,11 +1177,124 @@ export default function EditorPage() {
     }
   }, [videoBlobUrl])
 
+  // Copy selected points
+  const copySelectedPoints = useCallback(() => {
+    if (selectedPoints.size === 0) return
+    const pointsToCopy = funscriptPoints.filter((_, i) => selectedPoints.has(i))
+    if (pointsToCopy.length === 0) return
+
+    // Normalize times relative to first point
+    const minTime = Math.min(...pointsToCopy.map(p => p.at))
+    const normalizedPoints = pointsToCopy.map(p => ({ at: p.at - minTime, pos: p.pos }))
+    setClipboard(normalizedPoints)
+  }, [selectedPoints, funscriptPoints])
+
+  // Paste points at current time
+  const pastePoints = useCallback(() => {
+    if (clipboard.length === 0) return
+
+    // Paste at current time
+    const pastedPoints = clipboard.map(p => ({ at: p.at + Math.round(currentTime), pos: p.pos }))
+
+    // Merge with existing points, replacing any at the same time
+    const existingTimes = new Set(pastedPoints.map(p => p.at))
+    const newPoints = [
+      ...funscriptPoints.filter(p => !existingTimes.has(p.at)),
+      ...pastedPoints
+    ].sort((a, b) => a.at - b.at)
+
+    setFunscriptPoints(newPoints)
+    pushHistory(newPoints)
+  }, [clipboard, currentTime, funscriptPoints, pushHistory])
+
+  // Video controls - defined early so navigation functions can use them
+  const seekTo = useCallback((timeMs: number) => {
+    if (!videoRef.current) return
+    videoRef.current.currentTime = timeMs / 1000
+    setCurrentTime(timeMs)
+  }, [])
+
+  const togglePlayPause = useCallback(() => {
+    if (!videoRef.current) return
+    if (isPlaying) {
+      videoRef.current.pause()
+    } else {
+      videoRef.current.play()
+    }
+  }, [isPlaying])
+
+  const skipFrames = useCallback((frames: number) => {
+    const fps = video?.fps || 30
+    const frameDuration = 1000 / fps
+    const newTime = currentTime + (frames * frameDuration)
+    seekTo(Math.max(0, Math.min(duration, newTime)))
+  }, [currentTime, duration, video?.fps, seekTo])
+
+  // Add point at specific position (0-100)
+  const addPointAtPosition = useCallback((position: number) => {
+    const newPoint = { at: Math.round(currentTime), pos: position }
+    // Remove any existing point at this exact time
+    const filteredPoints = funscriptPoints.filter(p => Math.abs(p.at - newPoint.at) > 10)
+    const newPoints = [...filteredPoints, newPoint].sort((a, b) => a.at - b.at)
+    setFunscriptPoints(newPoints)
+    pushHistory(newPoints)
+  }, [currentTime, funscriptPoints, pushHistory])
+
+  // Jump to next point
+  const jumpToNextPoint = useCallback(() => {
+    const nextPoint = funscriptPoints.find(p => p.at > currentTime + 10)
+    if (nextPoint) {
+      seekTo(nextPoint.at)
+    }
+  }, [funscriptPoints, currentTime, seekTo])
+
+  // Jump to previous point
+  const jumpToPrevPoint = useCallback(() => {
+    let prevPoint: FunscriptPoint | undefined
+    for (let i = funscriptPoints.length - 1; i >= 0; i--) {
+      if (funscriptPoints[i].at < currentTime - 10) {
+        prevPoint = funscriptPoints[i]
+        break
+      }
+    }
+    if (prevPoint) {
+      seekTo(prevPoint.at)
+    }
+  }, [funscriptPoints, currentTime, seekTo])
+
+  // Nudge selected points up or down
+  const nudgeSelectedPoints = useCallback((delta: number) => {
+    if (selectedPoints.size === 0) return
+    const newPoints = funscriptPoints.map((p, i) => {
+      if (selectedPoints.has(i)) {
+        return { at: p.at, pos: Math.max(0, Math.min(100, p.pos + delta)) }
+      }
+      return p
+    })
+    setFunscriptPoints(newPoints)
+    pushHistory(newPoints)
+  }, [selectedPoints, funscriptPoints, pushHistory])
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+      // Number keys 0-9 for adding points at specific positions
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key >= '0' && e.key <= '9') {
+          e.preventDefault()
+          const pos = parseInt(e.key) * 10 // 0=0, 1=10, 2=20, etc.
+          addPointAtPosition(pos)
+          return
+        }
+        if (e.key === '=' || e.key === '+') {
+          e.preventDefault()
+          addPointAtPosition(100) // = key for position 100
+          return
+        }
+      }
 
       switch (e.key) {
         case ' ':
@@ -982,7 +1303,9 @@ export default function EditorPage() {
           break
         case 'ArrowLeft':
           e.preventDefault()
-          if (e.shiftKey) {
+          if (e.altKey) {
+            // Pan timeline left (not implemented yet)
+          } else if (e.shiftKey) {
             seekTo(Math.max(0, currentTime - 1000))
           } else {
             skipFrames(-1)
@@ -990,11 +1313,37 @@ export default function EditorPage() {
           break
         case 'ArrowRight':
           e.preventDefault()
-          if (e.shiftKey) {
+          if (e.altKey) {
+            // Pan timeline right (not implemented yet)
+          } else if (e.shiftKey) {
             seekTo(Math.min(duration, currentTime + 1000))
           } else {
             skipFrames(1)
           }
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          if (e.shiftKey) {
+            nudgeSelectedPoints(5) // Nudge selected points up
+          } else {
+            jumpToNextPoint() // Jump to next point
+          }
+          break
+        case 'ArrowDown':
+          e.preventDefault()
+          if (e.shiftKey) {
+            nudgeSelectedPoints(-5) // Nudge selected points down
+          } else {
+            jumpToPrevPoint() // Jump to previous point
+          }
+          break
+        case '.':
+          e.preventDefault()
+          jumpToNextPoint()
+          break
+        case ',':
+          e.preventDefault()
+          jumpToPrevPoint()
           break
         case 'Home':
           e.preventDefault()
@@ -1026,6 +1375,24 @@ export default function EditorPage() {
             setSelectedPoints(new Set(funscriptPoints.map((_, i) => i)))
           }
           break
+        case 'd':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault()
+            setSelectedPoints(new Set()) // Deselect all
+          }
+          break
+        case 'c':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault()
+            copySelectedPoints()
+          }
+          break
+        case 'v':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault()
+            pastePoints()
+          }
+          break
         case 'Escape':
           setSelectedPoints(new Set())
           break
@@ -1034,30 +1401,9 @@ export default function EditorPage() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [duration, currentTime, undo, redo, funscriptPoints])
-
-  // Video controls
-  const togglePlayPause = useCallback(() => {
-    if (!videoRef.current) return
-    if (isPlaying) {
-      videoRef.current.pause()
-    } else {
-      videoRef.current.play()
-    }
-  }, [isPlaying])
-
-  const seekTo = useCallback((timeMs: number) => {
-    if (!videoRef.current) return
-    videoRef.current.currentTime = timeMs / 1000
-    setCurrentTime(timeMs)
-  }, [])
-
-  const skipFrames = useCallback((frames: number) => {
-    const fps = video?.fps || 30
-    const frameDuration = 1000 / fps
-    const newTime = currentTime + (frames * frameDuration)
-    seekTo(Math.max(0, Math.min(duration, newTime)))
-  }, [currentTime, duration, video?.fps, seekTo])
+  }, [duration, currentTime, undo, redo, funscriptPoints, togglePlayPause, skipFrames, seekTo,
+      jumpToNextPoint, jumpToPrevPoint, nudgeSelectedPoints, addPointAtPosition,
+      copySelectedPoints, pastePoints])
 
   // File handling
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1220,11 +1566,29 @@ export default function EditorPage() {
       case 'smooth':
         newPoints = filters.smooth(funscriptPoints, args[0] || 50)
         break
+      case 'savitzkyGolay':
+        newPoints = filters.savitzkyGolay(funscriptPoints, args[0] || 5)
+        break
+      case 'antiJerk':
+        newPoints = filters.antiJerk(funscriptPoints, args[0] || 30)
+        break
       case 'amplify':
         newPoints = filters.amplify(funscriptPoints, args[0] || 20)
         break
       case 'invert':
         newPoints = filters.invert(funscriptPoints)
+        break
+      case 'clamp':
+        newPoints = filters.clamp(funscriptPoints, args[0] || 10, args[1] || 90)
+        break
+      case 'timeShift':
+        newPoints = filters.timeShift(funscriptPoints, args[0] || 0)
+        break
+      case 'rdpSimplify':
+        newPoints = filters.rdpSimplify(funscriptPoints, args[0] || 3)
+        break
+      case 'keyframes':
+        newPoints = filters.keyframes(funscriptPoints, args[0] || 20)
         break
       case 'speedLimit':
         newPoints = filters.speedLimit(funscriptPoints, args[0] || 400)
@@ -1868,6 +2232,15 @@ export default function EditorPage() {
                 </div>
               )}
 
+              {/* Movement Gauge */}
+              <div className="card">
+                <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
+                  <Activity className="w-4 h-4" />
+                  Movement Gauge
+                </h3>
+                <MovementGauge position={currentPosition} speed={currentSpeed} />
+              </div>
+
               {/* Quick Filters (Expert Mode) */}
               {isExpert && funscriptPoints.length > 0 && (
                 <div className="card">
@@ -2273,7 +2646,7 @@ export default function EditorPage() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowFiltersModal(false)}
           />
-          <div className="relative bg-bg-surface rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+          <div className="relative bg-bg-surface rounded-lg p-6 w-full max-w-md mx-4 shadow-xl max-h-[80vh] flex flex-col">
             <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
               <Filter className="w-5 h-5" />
               Post-Processing Filters
@@ -2282,7 +2655,7 @@ export default function EditorPage() {
               Apply filters to modify the funscript. Changes can be undone with Ctrl+Z.
             </p>
 
-            <div className="space-y-3">
+            <div className="space-y-3 overflow-y-auto flex-1">
               <button
                 className="w-full btn-secondary text-sm justify-start"
                 onClick={() => { applyFilter('smooth', 50); setShowFiltersModal(false); }}
@@ -2317,6 +2690,41 @@ export default function EditorPage() {
               >
                 <Trash2 className="w-4 h-4" />
                 Simplify - Remove redundant points
+              </button>
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('savitzkyGolay', 5); setShowFiltersModal(false); }}
+              >
+                <Sliders className="w-4 h-4" />
+                Savitzky-Golay - Polynomial smoothing preserving peaks
+              </button>
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('antiJerk', 30); setShowFiltersModal(false); }}
+              >
+                <Activity className="w-4 h-4" />
+                Anti-Jerk - Remove sudden jerky movements
+              </button>
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('clamp', 10, 90); setShowFiltersModal(false); }}
+              >
+                <Maximize className="w-4 h-4" />
+                Clamp - Constrain values to 10-90 range
+              </button>
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('rdpSimplify', 3); setShowFiltersModal(false); }}
+              >
+                <Trash2 className="w-4 h-4" />
+                RDP Simplify - Ramer-Douglas-Peucker algorithm
+              </button>
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('keyframes', 20); setShowFiltersModal(false); }}
+              >
+                <ChevronRight className="w-4 h-4" />
+                Keyframes - Keep only peaks and valleys
               </button>
             </div>
 
