@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useModeStore } from '@/store/modeStore'
-import { videosApi, processingApi, VideoMetadata, FunscriptPoint, ProcessingJob } from '@/api/client'
+import { videosApi, processingApi, devicesApi, VideoMetadata, FunscriptPoint, ProcessingJob, Device } from '@/api/client'
 import { useAuthStore } from '@/store/authStore'
 
 // Format duration in ms to MM:SS
@@ -228,12 +228,11 @@ export default function EditorPage() {
   // Timeline state
   const [timelineZoom, setTimelineZoom] = useState(1)
 
-  // Device state (setters used in device connection handlers)
-  const [deviceConnected, setDeviceConnected] = useState(false)
-  const [deviceStatus, setDeviceStatus] = useState('Disconnected')
-  // Keep linter happy - will be used when device connection is implemented
-  void setDeviceConnected
-  void setDeviceStatus
+  // Device state
+  const [device, setDevice] = useState<Device | null>(null)
+  const [showDeviceModal, setShowDeviceModal] = useState(false)
+  const [connectionKey, setConnectionKey] = useState('')
+  const [isConnecting, setIsConnecting] = useState(false)
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -530,6 +529,46 @@ export default function EditorPage() {
     }
   }, [video, duration])
 
+  // Device connection handlers
+  const connectDevice = useCallback(async () => {
+    if (!connectionKey.trim()) {
+      alert('Please enter a connection key')
+      return
+    }
+
+    setIsConnecting(true)
+    try {
+      const connectedDevice = await devicesApi.connectHandy(connectionKey.trim())
+      setDevice(connectedDevice)
+      setShowDeviceModal(false)
+      setConnectionKey('')
+    } catch (error) {
+      console.error('Failed to connect device:', error)
+      alert(error instanceof Error ? error.message : 'Failed to connect device')
+    } finally {
+      setIsConnecting(false)
+    }
+  }, [connectionKey])
+
+  const disconnectDevice = useCallback(async () => {
+    if (!device) return
+
+    try {
+      await devicesApi.disconnect(device.id)
+      setDevice(null)
+    } catch (error) {
+      console.error('Failed to disconnect device:', error)
+    }
+  }, [device])
+
+  const toggleDeviceModal = useCallback(() => {
+    if (device) {
+      disconnectDevice()
+    } else {
+      setShowDeviceModal(true)
+    }
+  }, [device, disconnectDevice])
+
   // Calculate statistics
   const stats = {
     points: funscriptPoints.length,
@@ -678,8 +717,9 @@ export default function EditorPage() {
         <div className="flex items-center gap-1 px-2">
           <ToolbarButton
             icon={Bluetooth}
-            label="Connect Device"
-            active={deviceConnected}
+            label={device ? 'Disconnect Device' : 'Connect Device'}
+            active={!!device}
+            onClick={toggleDeviceModal}
           />
           <ToolbarButton icon={Settings} label="Settings" />
         </div>
@@ -908,15 +948,27 @@ export default function EditorPage() {
                 <div className="flex items-center gap-3">
                   <div className={clsx(
                     "w-3 h-3 rounded-full",
-                    deviceConnected ? "bg-green-500" : "bg-text-disabled"
+                    device?.status === 'connected' || device?.status === 'syncing'
+                      ? "bg-green-500"
+                      : device?.status === 'connecting'
+                        ? "bg-yellow-500 animate-pulse"
+                        : "bg-text-disabled"
                   )} />
                   <span className="text-sm text-text-secondary">
-                    {deviceStatus}
+                    {device ? `${device.name} (${device.status})` : 'Disconnected'}
                   </span>
                 </div>
-                <button className="w-full btn-secondary mt-3 text-sm">
+                {device && device.firmware_version && (
+                  <p className="text-xs text-text-muted mt-1">
+                    Firmware: v{device.firmware_version}
+                  </p>
+                )}
+                <button
+                  className="w-full btn-secondary mt-3 text-sm"
+                  onClick={toggleDeviceModal}
+                >
                   <Bluetooth className="w-4 h-4" />
-                  {deviceConnected ? 'Disconnect' : 'Connect'}
+                  {device ? 'Disconnect' : 'Connect'}
                 </button>
               </div>
 
@@ -1017,6 +1069,64 @@ export default function EditorPage() {
           </div>
         </div>
       </div>
+
+      {/* Device Connection Modal */}
+      {showDeviceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowDeviceModal(false)}
+          />
+          {/* Modal */}
+          <div className="relative bg-bg-surface rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+            <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+              <Bluetooth className="w-5 h-5" />
+              Connect Handy Device
+            </h2>
+            <p className="text-sm text-text-secondary mb-4">
+              Enter your Handy connection key to connect your device.
+              You can find this in the Handy app or at handyfeeling.com.
+            </p>
+            <input
+              type="text"
+              placeholder="Enter connection key (e.g., ABC123)"
+              value={connectionKey}
+              onChange={(e) => setConnectionKey(e.target.value)}
+              className="w-full px-3 py-2 bg-bg-base border border-border rounded-md text-text-primary placeholder:text-text-muted mb-4 focus:outline-none focus:ring-2 focus:ring-primary"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                className="btn-secondary text-sm"
+                onClick={() => {
+                  setShowDeviceModal(false)
+                  setConnectionKey('')
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-primary text-sm"
+                onClick={connectDevice}
+                disabled={!connectionKey.trim() || isConnecting}
+              >
+                {isConnecting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    <Bluetooth className="w-4 h-4" />
+                    Connect
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
