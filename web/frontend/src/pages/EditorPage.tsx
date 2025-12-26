@@ -28,7 +28,22 @@ import {
   FolderOpen,
   Box,
   Eye,
-  EyeOff
+  EyeOff,
+  FilePlus,
+  X,
+  Copy,
+  Clipboard,
+  Keyboard,
+  Info,
+  Github,
+  Layout,
+  Palette,
+  Bookmark,
+  BookmarkPlus,
+  List,
+  BarChart3,
+  Waves,
+  SplitSquareVertical
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useModeStore } from '@/store/modeStore'
@@ -821,6 +836,507 @@ function Heatmap({ points, duration }: { points: FunscriptPoint[], duration: num
   )
 }
 
+// Chapter type definition
+interface Chapter {
+  id: string
+  name: string
+  startTime: number
+  endTime: number
+  color: string
+}
+
+// Menu item type
+interface MenuItem {
+  label: string
+  shortcut?: string
+  icon?: React.ElementType
+  onClick?: () => void
+  disabled?: boolean
+  separator?: boolean
+  submenu?: MenuItem[]
+  checked?: boolean
+}
+
+// MenuBar component
+function MenuBar({
+  onNewProject,
+  onOpenProject,
+  onSaveProject,
+  onExportFunscript,
+  onImportFunscript,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  isExpert,
+  onToggleMode,
+  showHeatmap,
+  onToggleHeatmap,
+  showSimulator3D,
+  onToggleSimulator3D,
+  showTimeline2,
+  onToggleTimeline2,
+  showWaveform,
+  onToggleWaveform,
+  showChapterList,
+  onToggleChapterList,
+  onShowKeyboardShortcuts,
+  onShowSettings,
+  onShowFilters,
+  theme,
+  onToggleTheme,
+}: {
+  onNewProject: () => void
+  onOpenProject: () => void
+  onSaveProject: () => void
+  onExportFunscript: () => void
+  onImportFunscript: () => void
+  onUndo: () => void
+  onRedo: () => void
+  canUndo: boolean
+  canRedo: boolean
+  isExpert: boolean
+  onToggleMode: () => void
+  showHeatmap: boolean
+  onToggleHeatmap: () => void
+  showSimulator3D: boolean
+  onToggleSimulator3D: () => void
+  showTimeline2: boolean
+  onToggleTimeline2: () => void
+  showWaveform: boolean
+  onToggleWaveform: () => void
+  showChapterList: boolean
+  onToggleChapterList: () => void
+  onShowKeyboardShortcuts: () => void
+  onShowSettings: () => void
+  onShowFilters: () => void
+  theme: 'dark' | 'light'
+  onToggleTheme: () => void
+}) {
+  const [activeMenu, setActiveMenu] = useState<string | null>(null)
+
+  const menus: Record<string, MenuItem[]> = {
+    File: [
+      { label: 'New Project', shortcut: 'Ctrl+N', icon: FilePlus, onClick: onNewProject },
+      { label: 'Open Project', shortcut: 'Ctrl+O', icon: FolderOpen, onClick: onOpenProject },
+      { label: 'Save Project', shortcut: 'Ctrl+S', icon: Save, onClick: onSaveProject },
+      { separator: true, label: '' },
+      { label: 'Import Funscript', icon: FileUp, onClick: onImportFunscript },
+      { label: 'Export Funscript', shortcut: 'Ctrl+E', icon: Download, onClick: onExportFunscript },
+      { separator: true, label: '' },
+      { label: 'Chapters', icon: Bookmark, submenu: [
+        { label: 'Save Chapters', icon: Save, onClick: () => {} },
+        { label: 'Load Chapters', icon: FolderOpen, onClick: () => {} },
+        { label: 'Clear Chapters', icon: Trash2, onClick: () => {} },
+      ]},
+    ],
+    Edit: [
+      { label: 'Undo', shortcut: 'Ctrl+Z', icon: Undo2, onClick: onUndo, disabled: !canUndo },
+      { label: 'Redo', shortcut: 'Ctrl+Y', icon: Redo2, onClick: onRedo, disabled: !canRedo },
+      { separator: true, label: '' },
+      { label: 'Copy Points', shortcut: 'Ctrl+C', icon: Copy, onClick: () => {} },
+      { label: 'Paste Points', shortcut: 'Ctrl+V', icon: Clipboard, onClick: () => {} },
+      { label: 'Delete Selected', shortcut: 'Delete', icon: Trash2, onClick: () => {} },
+      { separator: true, label: '' },
+      { label: 'Select All', shortcut: 'Ctrl+A', icon: MousePointer, onClick: () => {} },
+      { label: 'Deselect All', shortcut: 'Ctrl+D', onClick: () => {} },
+    ],
+    View: [
+      { label: isExpert ? 'Simple Mode' : 'Expert Mode', icon: Layout, onClick: onToggleMode },
+      { separator: true, label: '' },
+      { label: 'Show Heatmap', icon: Activity, onClick: onToggleHeatmap, checked: showHeatmap },
+      { label: 'Show 3D Simulator', icon: Box, onClick: onToggleSimulator3D, checked: showSimulator3D },
+      { label: 'Show Timeline 2', icon: SplitSquareVertical, onClick: onToggleTimeline2, checked: showTimeline2 },
+      { label: 'Show Waveform', icon: Waves, onClick: onToggleWaveform, checked: showWaveform },
+      { separator: true, label: '' },
+      { label: 'Chapter List', icon: List, onClick: onToggleChapterList, checked: showChapterList },
+      { separator: true, label: '' },
+      { label: theme === 'dark' ? 'Light Theme' : 'Dark Theme', icon: Palette, onClick: onToggleTheme },
+    ],
+    Tools: [
+      { label: 'Post-Processing Filters', shortcut: 'Ctrl+F', icon: Filter, onClick: onShowFilters },
+      { separator: true, label: '' },
+      { label: 'Settings', icon: Settings, onClick: onShowSettings },
+    ],
+    Help: [
+      { label: 'Keyboard Shortcuts', shortcut: 'F1', icon: Keyboard, onClick: onShowKeyboardShortcuts },
+      { separator: true, label: '' },
+      { label: 'About FunGen', icon: Info, onClick: () => {} },
+      { label: 'GitHub', icon: Github, onClick: () => window.open('https://github.com', '_blank') },
+    ],
+  }
+
+  const handleMenuClick = (menuName: string) => {
+    setActiveMenu(activeMenu === menuName ? null : menuName)
+  }
+
+  const handleItemClick = (item: MenuItem) => {
+    if (item.onClick && !item.disabled) {
+      item.onClick()
+    }
+    setActiveMenu(null)
+  }
+
+  // Close menu on outside click
+  useEffect(() => {
+    const handleClickOutside = () => setActiveMenu(null)
+    if (activeMenu) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [activeMenu])
+
+  return (
+    <div className="flex items-center h-8 bg-bg-elevated border-b border-border px-2 gap-1">
+      {Object.entries(menus).map(([menuName, items]) => (
+        <div key={menuName} className="relative">
+          <button
+            className={clsx(
+              'px-3 py-1 text-sm rounded hover:bg-bg-surface transition-colors',
+              activeMenu === menuName && 'bg-bg-surface'
+            )}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleMenuClick(menuName)
+            }}
+          >
+            {menuName}
+          </button>
+          {activeMenu === menuName && (
+            <div className="absolute left-0 top-full mt-1 bg-bg-surface border border-border rounded-lg shadow-xl z-50 min-w-[220px] py-1">
+              {items.map((item, idx) => (
+                item.separator ? (
+                  <div key={idx} className="h-px bg-border mx-2 my-1" />
+                ) : item.submenu ? (
+                  <div key={idx} className="relative group">
+                    <button
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-text-primary hover:bg-primary/20 transition-colors"
+                    >
+                      {item.icon && <item.icon className="w-4 h-4 text-text-muted" />}
+                      <span className="flex-1 text-left">{item.label}</span>
+                      <ChevronRight className="w-4 h-4 text-text-muted" />
+                    </button>
+                    <div className="absolute left-full top-0 bg-bg-surface border border-border rounded-lg shadow-xl z-50 min-w-[180px] py-1 hidden group-hover:block">
+                      {item.submenu.map((subitem, subidx) => (
+                        <button
+                          key={subidx}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
+                          onClick={() => handleItemClick(subitem)}
+                          disabled={subitem.disabled}
+                        >
+                          {subitem.icon && <subitem.icon className="w-4 h-4 text-text-muted" />}
+                          <span className="flex-1 text-left">{subitem.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    key={idx}
+                    className={clsx(
+                      "w-full flex items-center gap-2 px-3 py-1.5 text-sm text-text-primary hover:bg-primary/20 transition-colors",
+                      item.disabled && "opacity-50 cursor-not-allowed"
+                    )}
+                    onClick={() => handleItemClick(item)}
+                    disabled={item.disabled}
+                  >
+                    {item.icon && <item.icon className="w-4 h-4 text-text-muted" />}
+                    <span className="flex-1 text-left">{item.label}</span>
+                    {item.checked !== undefined && (
+                      <span className={clsx(
+                        "w-4 h-4 rounded border flex items-center justify-center text-xs",
+                        item.checked ? "bg-primary border-primary text-white" : "border-border"
+                      )}>
+                        {item.checked && '✓'}
+                      </span>
+                    )}
+                    {item.shortcut && (
+                      <span className="text-xs text-text-muted">{item.shortcut}</span>
+                    )}
+                  </button>
+                )
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Right side - status indicators */}
+      <div className="flex-1" />
+      <div className="flex items-center gap-2 text-xs text-text-muted">
+        <span className="px-2 py-0.5 bg-bg-base rounded">{isExpert ? 'Expert' : 'Simple'}</span>
+      </div>
+    </div>
+  )
+}
+
+// Keyboard shortcuts dialog component
+function KeyboardShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const shortcuts = [
+    { category: 'Playback', items: [
+      { key: 'Space', action: 'Play/Pause' },
+      { key: 'Left/Right Arrow', action: 'Skip frames' },
+      { key: 'Home', action: 'Go to start' },
+      { key: 'End', action: 'Go to end' },
+    ]},
+    { category: 'Editing', items: [
+      { key: 'Ctrl+Z', action: 'Undo' },
+      { key: 'Ctrl+Y', action: 'Redo' },
+      { key: 'Ctrl+C', action: 'Copy selected points' },
+      { key: 'Ctrl+V', action: 'Paste points' },
+      { key: 'Delete', action: 'Delete selected points' },
+      { key: 'Ctrl+A', action: 'Select all points' },
+      { key: 'Ctrl+D', action: 'Deselect all' },
+    ]},
+    { category: 'Point Entry', items: [
+      { key: '0-9', action: 'Add point at position 0-90' },
+      { key: '=', action: 'Add point at position 100' },
+      { key: 'Up Arrow', action: 'Jump to next point' },
+      { key: 'Down Arrow', action: 'Jump to previous point' },
+      { key: 'Shift+Up', action: 'Nudge selected points up' },
+      { key: 'Shift+Down', action: 'Nudge selected points down' },
+    ]},
+    { category: 'View', items: [
+      { key: 'Ctrl++', action: 'Zoom in timeline' },
+      { key: 'Ctrl+-', action: 'Zoom out timeline' },
+      { key: 'F1', action: 'Show keyboard shortcuts' },
+    ]},
+    { category: 'File', items: [
+      { key: 'Ctrl+S', action: 'Save project' },
+      { key: 'Ctrl+O', action: 'Open project' },
+      { key: 'Ctrl+E', action: 'Export funscript' },
+    ]},
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-bg-surface rounded-lg p-6 w-full max-w-2xl mx-4 shadow-xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+            <Keyboard className="w-5 h-5" />
+            Keyboard Shortcuts
+          </h2>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 overflow-y-auto flex-1">
+          {shortcuts.map((section) => (
+            <div key={section.category}>
+              <h3 className="text-sm font-medium text-primary mb-2">{section.category}</h3>
+              <div className="space-y-1">
+                {section.items.map((item) => (
+                  <div key={item.key} className="flex items-center justify-between text-sm">
+                    <span className="text-text-secondary">{item.action}</span>
+                    <kbd className="px-2 py-0.5 bg-bg-elevated rounded text-xs text-text-muted font-mono">
+                      {item.key}
+                    </kbd>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end mt-4 pt-4 border-t border-border">
+          <button className="btn-primary text-sm" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Statistics panel component
+function StatisticsPanel({ stats, duration, video }: {
+  stats: { points: number, avgSpeed: number, peakSpeed: number, intensity: number, strokeCount: number },
+  duration: number,
+  video: VideoMetadata | null
+}) {
+  return (
+    <div className="bg-bg-base rounded-lg p-3">
+      <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
+        <BarChart3 className="w-4 h-4" />
+        Statistics
+      </h3>
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-text-muted">Points:</span>
+          <span className="text-text-primary font-mono">{stats.points}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-text-muted">Duration:</span>
+          <span className="text-text-primary font-mono">{formatDuration(duration)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-text-muted">Avg Speed:</span>
+          <span className="text-text-primary font-mono">{stats.avgSpeed} u/s</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-text-muted">Peak Speed:</span>
+          <span className="text-text-primary font-mono">{stats.peakSpeed} u/s</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-text-muted">Strokes:</span>
+          <span className="text-text-primary font-mono">{stats.strokeCount}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-text-muted">Intensity:</span>
+          <span className="text-text-primary font-mono">{stats.intensity}%</span>
+        </div>
+        {video && (
+          <>
+            <div className="flex justify-between col-span-2">
+              <span className="text-text-muted">Resolution:</span>
+              <span className="text-text-primary font-mono">{video.width}x{video.height}</span>
+            </div>
+            <div className="flex justify-between col-span-2">
+              <span className="text-text-muted">FPS:</span>
+              <span className="text-text-primary font-mono">{video.fps?.toFixed(2) || 'N/A'}</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Chapter list component
+function ChapterList({
+  chapters,
+  currentTime,
+  onSeek,
+  onAddChapter,
+  onDeleteChapter
+}: {
+  chapters: Chapter[]
+  currentTime: number
+  onSeek: (time: number) => void
+  onAddChapter: () => void
+  onDeleteChapter: (id: string) => void
+}) {
+  return (
+    <div className="bg-bg-base rounded-lg p-3">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-text-primary flex items-center gap-2">
+          <Bookmark className="w-4 h-4" />
+          Chapters
+        </h3>
+        <button
+          onClick={onAddChapter}
+          className="p-1 hover:bg-bg-elevated rounded"
+          title="Add chapter at current time"
+        >
+          <BookmarkPlus className="w-4 h-4 text-text-muted" />
+        </button>
+      </div>
+      {chapters.length === 0 ? (
+        <p className="text-xs text-text-muted text-center py-4">No chapters yet</p>
+      ) : (
+        <div className="space-y-1 max-h-48 overflow-y-auto">
+          {chapters.map((chapter) => (
+            <div
+              key={chapter.id}
+              className={clsx(
+                "flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-bg-elevated transition-colors",
+                currentTime >= chapter.startTime && currentTime < chapter.endTime && "bg-primary/20"
+              )}
+              onClick={() => onSeek(chapter.startTime)}
+            >
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: chapter.color }} />
+              <span className="flex-1 text-sm text-text-primary truncate">{chapter.name}</span>
+              <span className="text-xs text-text-muted font-mono">{formatDuration(chapter.startTime)}</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDeleteChapter(chapter.id); }}
+                className="p-0.5 hover:text-red-400"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Audio waveform component
+function AudioWaveform({
+  duration,
+  currentTime
+}: {
+  duration: number
+  currentTime: number
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [waveformData, setWaveformData] = useState<number[]>([])
+
+  useEffect(() => {
+    // Generate placeholder waveform data (in production, this would analyze actual audio)
+    const segments = 200
+    const data: number[] = []
+    for (let i = 0; i < segments; i++) {
+      // Create a realistic-looking waveform pattern
+      const base = Math.sin(i * 0.1) * 0.3 + 0.5
+      const noise = (Math.random() - 0.5) * 0.4
+      data.push(Math.max(0.1, Math.min(1, base + noise)))
+    }
+    setWaveformData(data)
+  }, [duration])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || waveformData.length === 0) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const width = canvas.width
+    const height = canvas.height
+    const barWidth = width / waveformData.length
+
+    // Clear
+    ctx.fillStyle = '#1a1a1a'
+    ctx.fillRect(0, 0, width, height)
+
+    // Draw waveform
+    waveformData.forEach((value, i) => {
+      const x = i * barWidth
+      const barHeight = value * height * 0.8
+      const y = (height - barHeight) / 2
+
+      // Color based on playback position
+      const progress = duration > 0 ? (i / waveformData.length) : 0
+      const isPlayed = progress <= (currentTime / duration)
+
+      ctx.fillStyle = isPlayed ? '#22c55e' : '#4ade80'
+      ctx.globalAlpha = isPlayed ? 0.8 : 0.4
+      ctx.fillRect(x, y, barWidth - 1, barHeight)
+    })
+
+    ctx.globalAlpha = 1
+
+    // Draw playhead
+    if (duration > 0) {
+      const playheadX = (currentTime / duration) * width
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(playheadX - 1, 0, 2, height)
+    }
+  }, [waveformData, currentTime, duration])
+
+  return (
+    <div className="h-12 bg-bg-base rounded overflow-hidden">
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={48}
+        className="w-full h-full"
+      />
+    </div>
+  )
+}
+
 export default function EditorPage() {
   // Video state
   const [video, setVideo] = useState<VideoMetadata | null>(null)
@@ -873,6 +1389,20 @@ export default function EditorPage() {
   // UI visibility state
   const [showSimulator3D, setShowSimulator3D] = useState(true)
   const [showHeatmap, setShowHeatmap] = useState(true)
+  const [showTimeline2, setShowTimeline2] = useState(false)
+  const [showWaveform, setShowWaveform] = useState(false)
+  const [showChapterList, setShowChapterList] = useState(false)
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
+
+  // Timeline 2 state (secondary axis for roll)
+  const [funscriptPoints2, setFunscriptPoints2] = useState<FunscriptPoint[]>([])
+  const [selectedPoints2, setSelectedPoints2] = useState<Set<number>>(new Set())
+
+  // Chapters state
+  const [chapters, setChapters] = useState<Chapter[]>([])
+
+  // Theme state
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
 
   // Project state
   const [projectName, setProjectName] = useState<string>('')
@@ -1771,6 +2301,69 @@ export default function EditorPage() {
     return result
   }, [funscriptPoints])
 
+  // New project handler
+  const newProject = useCallback(() => {
+    if (projectDirty && !confirm('You have unsaved changes. Start a new project anyway?')) {
+      return
+    }
+    setVideo(null)
+    setVideoBlobUrl(null)
+    setFunscriptPoints([])
+    setFunscriptPoints2([])
+    setSelectedPoints(new Set())
+    setSelectedPoints2(new Set())
+    setChapters([])
+    setHistory([])
+    setHistoryIndex(-1)
+    setProjectName('')
+    setProjectDirty(false)
+    setCurrentTime(0)
+    setDuration(0)
+  }, [projectDirty])
+
+  // Add chapter at current time
+  const addChapter = useCallback(() => {
+    const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899']
+    const newChapter: Chapter = {
+      id: Date.now().toString(),
+      name: `Chapter ${chapters.length + 1}`,
+      startTime: currentTime,
+      endTime: duration,
+      color: colors[chapters.length % colors.length]
+    }
+    // Adjust previous chapter's end time
+    const updatedChapters = chapters.map((ch, idx) => {
+      if (idx === chapters.length - 1 && ch.endTime > currentTime) {
+        return { ...ch, endTime: currentTime }
+      }
+      return ch
+    })
+    setChapters([...updatedChapters, newChapter].sort((a, b) => a.startTime - b.startTime))
+  }, [chapters, currentTime, duration])
+
+  // Delete chapter
+  const deleteChapter = useCallback((id: string) => {
+    setChapters(chapters.filter(ch => ch.id !== id))
+  }, [chapters])
+
+  // Toggle theme
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
+    // In a real app, you would also update CSS variables or body class
+  }, [])
+
+  // Handle F1 keyboard shortcut for help
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F1') {
+        e.preventDefault()
+        setShowKeyboardShortcuts(true)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Hidden file inputs */}
@@ -1797,6 +2390,36 @@ export default function EditorPage() {
         className="sr-only"
         style={{ position: 'absolute', left: '-9999px' }}
         onChange={handleProjectLoad}
+      />
+
+      {/* Menu Bar */}
+      <MenuBar
+        onNewProject={newProject}
+        onOpenProject={openProjectDialog}
+        onSaveProject={saveProject}
+        onExportFunscript={exportFunscript}
+        onImportFunscript={openFunscriptDialog}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={historyIndex > 0}
+        canRedo={historyIndex < history.length - 1}
+        isExpert={isExpert}
+        onToggleMode={toggleMode}
+        showHeatmap={showHeatmap}
+        onToggleHeatmap={() => setShowHeatmap(!showHeatmap)}
+        showSimulator3D={showSimulator3D}
+        onToggleSimulator3D={() => setShowSimulator3D(!showSimulator3D)}
+        showTimeline2={showTimeline2}
+        onToggleTimeline2={() => setShowTimeline2(!showTimeline2)}
+        showWaveform={showWaveform}
+        onToggleWaveform={() => setShowWaveform(!showWaveform)}
+        showChapterList={showChapterList}
+        onToggleChapterList={() => setShowChapterList(!showChapterList)}
+        onShowKeyboardShortcuts={() => setShowKeyboardShortcuts(true)}
+        onShowSettings={() => setShowSettingsModal(true)}
+        onShowFilters={() => setShowFiltersModal(true)}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       {/* Toolbar */}
@@ -2099,8 +2722,22 @@ export default function EditorPage() {
             </div>
           )}
 
-          {/* Timeline */}
+          {/* Audio Waveform */}
+          {showWaveform && video && (
+            <div className="h-12 bg-bg-surface border-t border-border px-2">
+              <AudioWaveform
+                duration={duration || 60000}
+                currentTime={currentTime}
+              />
+            </div>
+          )}
+
+          {/* Timeline 1 */}
           <div className="h-48 bg-bg-surface border-t border-border">
+            <div className="px-2 py-1 text-xs text-text-muted border-b border-border flex items-center gap-2">
+              <SplitSquareVertical className="w-3 h-3" />
+              Timeline 1 (Stroke)
+            </div>
             {video || funscriptPoints.length > 0 ? (
               <Timeline
                 currentTime={currentTime}
@@ -2120,6 +2757,48 @@ export default function EditorPage() {
               </div>
             )}
           </div>
+
+          {/* Timeline 2 (Roll axis) */}
+          {showTimeline2 && (
+            <div className="h-36 bg-bg-surface border-t border-border">
+              <div className="px-2 py-1 text-xs text-text-muted border-b border-border flex items-center gap-2">
+                <SplitSquareVertical className="w-3 h-3" />
+                Timeline 2 (Roll)
+              </div>
+              {video || funscriptPoints2.length > 0 ? (
+                <Timeline
+                  currentTime={currentTime}
+                  duration={duration || 60000}
+                  points={funscriptPoints2}
+                  selectedPoints={selectedPoints2}
+                  onSeek={seekTo}
+                  onSelectPoint={(idx, add) => {
+                    if (add) {
+                      setSelectedPoints2(prev => new Set([...prev, idx]))
+                    } else {
+                      setSelectedPoints2(new Set([idx]))
+                    }
+                  }}
+                  onMovePoint={(idx, newPos) => {
+                    const newPoints = [...funscriptPoints2]
+                    newPoints[idx] = { ...newPoints[idx], pos: newPos }
+                    setFunscriptPoints2(newPoints)
+                  }}
+                  onDeleteSelected={() => {
+                    const newPoints = funscriptPoints2.filter((_, i) => !selectedPoints2.has(i))
+                    setFunscriptPoints2(newPoints)
+                    setSelectedPoints2(new Set())
+                  }}
+                  zoom={timelineZoom}
+                  editMode={editMode}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-text-muted text-sm">Timeline 2 - Secondary axis for roll</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right sidebar - Control Panel */}
@@ -2240,6 +2919,24 @@ export default function EditorPage() {
                 </h3>
                 <MovementGauge position={currentPosition} speed={currentSpeed} />
               </div>
+
+              {/* Statistics Panel */}
+              <div className="card">
+                <StatisticsPanel stats={stats} duration={duration} video={video} />
+              </div>
+
+              {/* Chapter List */}
+              {showChapterList && (
+                <div className="card">
+                  <ChapterList
+                    chapters={chapters}
+                    currentTime={currentTime}
+                    onSeek={seekTo}
+                    onAddChapter={addChapter}
+                    onDeleteChapter={deleteChapter}
+                  />
+                </div>
+              )}
 
               {/* Quick Filters (Expert Mode) */}
               {isExpert && funscriptPoints.length > 0 && (
@@ -2738,6 +3435,11 @@ export default function EditorPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Keyboard Shortcuts Dialog */}
+      {showKeyboardShortcuts && (
+        <KeyboardShortcutsDialog onClose={() => setShowKeyboardShortcuts(false)} />
       )}
     </div>
   )
