@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   Upload,
   Play,
@@ -17,7 +17,15 @@ import {
   Plus,
   RotateCcw,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Trash2,
+  FileUp,
+  Undo2,
+  Redo2,
+  Filter,
+  Move,
+  MousePointer,
+  FolderOpen
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useModeStore } from '@/store/modeStore'
@@ -39,6 +47,86 @@ function formatTime(ms: number): string {
   const seconds = totalSeconds % 60
   const millis = Math.floor(ms % 1000)
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`
+}
+
+// Post-processing filter functions
+const filters = {
+  smooth: (points: FunscriptPoint[], strength: number): FunscriptPoint[] => {
+    if (points.length < 3) return points
+    const result: FunscriptPoint[] = [points[0]]
+    const windowSize = Math.max(3, Math.floor(strength / 10))
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const start = Math.max(0, i - Math.floor(windowSize / 2))
+      const end = Math.min(points.length, i + Math.floor(windowSize / 2) + 1)
+      let sum = 0
+      for (let j = start; j < end; j++) {
+        sum += points[j].pos
+      }
+      result.push({ at: points[i].at, pos: Math.round(sum / (end - start)) })
+    }
+    result.push(points[points.length - 1])
+    return result
+  },
+
+  amplify: (points: FunscriptPoint[], amount: number): FunscriptPoint[] => {
+    const factor = 1 + (amount / 100)
+    return points.map(p => ({
+      at: p.at,
+      pos: Math.max(0, Math.min(100, Math.round((p.pos - 50) * factor + 50)))
+    }))
+  },
+
+  invert: (points: FunscriptPoint[]): FunscriptPoint[] => {
+    return points.map(p => ({ at: p.at, pos: 100 - p.pos }))
+  },
+
+  speedLimit: (points: FunscriptPoint[], maxSpeed: number): FunscriptPoint[] => {
+    if (points.length < 2) return points
+    const result: FunscriptPoint[] = [points[0]]
+
+    for (let i = 1; i < points.length; i++) {
+      const prev = result[result.length - 1]
+      const curr = points[i]
+      const dt = curr.at - prev.at
+      if (dt <= 0) continue
+
+      const dp = Math.abs(curr.pos - prev.pos)
+      const speed = (dp / dt) * 1000
+
+      if (speed > maxSpeed) {
+        const maxDp = (maxSpeed * dt) / 1000
+        const direction = curr.pos > prev.pos ? 1 : -1
+        result.push({
+          at: curr.at,
+          pos: Math.max(0, Math.min(100, Math.round(prev.pos + direction * maxDp)))
+        })
+      } else {
+        result.push(curr)
+      }
+    }
+    return result
+  },
+
+  simplify: (points: FunscriptPoint[], tolerance: number): FunscriptPoint[] => {
+    if (points.length < 3) return points
+    // Simple RDP-like simplification
+    const result: FunscriptPoint[] = [points[0]]
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = result[result.length - 1]
+      const curr = points[i]
+      const next = points[i + 1]
+
+      // Check if current point is necessary
+      const expectedPos = prev.pos + ((next.pos - prev.pos) * (curr.at - prev.at)) / (next.at - prev.at)
+      if (Math.abs(curr.pos - expectedPos) > tolerance) {
+        result.push(curr)
+      }
+    }
+    result.push(points[points.length - 1])
+    return result
+  }
 }
 
 // Toolbar button component
@@ -71,41 +159,100 @@ function ToolbarButton({
   )
 }
 
-// Timeline component
+// Enhanced Timeline component with point selection and dragging
 function Timeline({
   currentTime,
   duration,
   points,
+  selectedPoints,
   onSeek,
+  onSelectPoint,
+  onMovePoint,
+  onDeleteSelected,
   zoom,
+  editMode,
 }: {
   currentTime: number
   duration: number
   points: FunscriptPoint[]
+  selectedPoints: Set<number>
   onSeek: (time: number) => void
+  onSelectPoint: (index: number, addToSelection: boolean) => void
+  onMovePoint: (index: number, newPos: number) => void
+  onDeleteSelected: () => void
   zoom: number
+  editMode: 'select' | 'move'
 }) {
   const timelineRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
-  const scrollOffset = 0 // Will be used for zoom panning
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const scrollOffset = 0
+
+  const getTimeFromX = (clientX: number) => {
+    if (!timelineRef.current || duration === 0) return 0
+    const rect = timelineRef.current.getBoundingClientRect()
+    const x = clientX - rect.left + scrollOffset
+    const timelineWidth = rect.width * zoom
+    return Math.max(0, Math.min(duration, (x / timelineWidth) * duration))
+  }
+
+  const getPosFromY = (clientY: number) => {
+    if (!timelineRef.current) return 50
+    const rect = timelineRef.current.getBoundingClientRect()
+    const y = clientY - rect.top
+    const pos = 100 - (y / rect.height) * 100
+    return Math.max(0, Math.min(100, Math.round(pos)))
+  }
 
   const handleTimelineClick = (e: React.MouseEvent) => {
-    if (!timelineRef.current || duration === 0) return
-    const rect = timelineRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left + scrollOffset
-    const timelineWidth = rect.width * zoom
-    const clickTime = (x / timelineWidth) * duration
-    onSeek(Math.max(0, Math.min(duration, clickTime)))
+    if (dragIndex !== null) return
+    const time = getTimeFromX(e.clientX)
+    onSeek(time)
+  }
+
+  const handleMouseDown = () => {
+    if (editMode === 'select') {
+      setIsDragging(true)
+    }
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !timelineRef.current || duration === 0) return
-    const rect = timelineRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left + scrollOffset
-    const timelineWidth = rect.width * zoom
-    const clickTime = (x / timelineWidth) * duration
-    onSeek(Math.max(0, Math.min(duration, clickTime)))
+    if (isDragging && editMode === 'select') {
+      const time = getTimeFromX(e.clientX)
+      onSeek(time)
+    } else if (dragIndex !== null && editMode === 'move') {
+      const newPos = getPosFromY(e.clientY)
+      onMovePoint(dragIndex, newPos)
+    }
   }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+    setDragIndex(null)
+  }
+
+  const handlePointMouseDown = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation()
+    if (editMode === 'move') {
+      setDragIndex(index)
+    } else {
+      onSelectPoint(index, e.shiftKey || e.ctrlKey || e.metaKey)
+    }
+  }
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (selectedPoints.size > 0) {
+        e.preventDefault()
+        onDeleteSelected()
+      }
+    }
+  }, [selectedPoints, onDeleteSelected])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
 
@@ -118,21 +265,35 @@ function Timeline({
         </span>
         <div className="flex items-center gap-2">
           <span className="text-xs text-text-muted">{points.length} points</span>
+          {selectedPoints.size > 0 && (
+            <span className="text-xs text-primary">{selectedPoints.size} selected</span>
+          )}
         </div>
       </div>
 
       {/* Timeline track */}
       <div
         ref={timelineRef}
-        className="flex-1 relative cursor-crosshair overflow-hidden"
+        className={clsx(
+          "flex-1 relative overflow-hidden",
+          editMode === 'select' ? 'cursor-crosshair' : 'cursor-move'
+        )}
         onClick={handleTimelineClick}
-        onMouseDown={() => setIsDragging(true)}
-        onMouseUp={() => setIsDragging(false)}
-        onMouseLeave={() => setIsDragging(false)}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
         onMouseMove={handleMouseMove}
       >
         {/* Background grid */}
         <div className="absolute inset-0 bg-bg-base">
+          {/* Horizontal position guides */}
+          {[0, 25, 50, 75, 100].map(pos => (
+            <div
+              key={pos}
+              className="absolute left-0 right-0 border-t border-border/30"
+              style={{ top: `${100 - pos}%` }}
+            />
+          ))}
           {/* Time markers */}
           {duration > 0 && Array.from({ length: Math.ceil(duration / 10000) + 1 }).map((_, i) => {
             const percent = (i * 10000 / duration) * 100
@@ -153,6 +314,18 @@ function Timeline({
 
         {/* Funscript visualization */}
         <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+          {/* Fill area under curve */}
+          {points.length > 1 && (
+            <polygon
+              fill="var(--color-primary)"
+              fillOpacity="0.1"
+              points={`0,100% ${points.map(p => {
+                const x = (p.at / duration) * 100
+                const y = 100 - p.pos
+                return `${x}%,${y}%`
+              }).join(' ')} 100%,100%`}
+            />
+          )}
           {/* Draw lines between points */}
           {points.length > 1 && (
             <polyline
@@ -161,7 +334,7 @@ function Timeline({
               strokeWidth="2"
               points={points.map(p => {
                 const x = (p.at / duration) * 100
-                const y = 100 - p.pos // Invert Y axis
+                const y = 100 - p.pos
                 return `${x}%,${y}%`
               }).join(' ')}
             />
@@ -170,18 +343,18 @@ function Timeline({
           {points.map((point, index) => {
             const x = (point.at / duration) * 100
             const y = 100 - point.pos
+            const isSelected = selectedPoints.has(index)
             return (
               <circle
                 key={index}
                 cx={`${x}%`}
                 cy={`${y}%`}
-                r="4"
-                fill="var(--color-primary)"
-                className="cursor-pointer hover:fill-white"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  // Select point or show context menu
-                }}
+                r={isSelected ? "6" : "4"}
+                fill={isSelected ? "white" : "var(--color-primary)"}
+                stroke={isSelected ? "var(--color-primary)" : "none"}
+                strokeWidth="2"
+                className="cursor-pointer hover:fill-white transition-all"
+                onMouseDown={(e) => handlePointMouseDown(e, index)}
               />
             )
           })}
@@ -189,7 +362,7 @@ function Timeline({
 
         {/* Playhead */}
         <div
-          className="absolute top-0 bottom-0 w-0.5 bg-white z-10"
+          className="absolute top-0 bottom-0 w-0.5 bg-white z-10 pointer-events-none"
           style={{ left: `${progressPercent}%` }}
         >
           <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-white" />
@@ -197,11 +370,67 @@ function Timeline({
       </div>
 
       {/* Position axis labels */}
-      <div className="absolute right-2 top-8 bottom-8 w-6 flex flex-col justify-between text-[10px] text-text-muted">
+      <div className="absolute right-2 top-8 bottom-8 w-6 flex flex-col justify-between text-[10px] text-text-muted pointer-events-none">
         <span>100</span>
         <span>50</span>
         <span>0</span>
       </div>
+    </div>
+  )
+}
+
+// Heatmap visualization component
+function Heatmap({ points, duration }: { points: FunscriptPoint[], duration: number }) {
+  const segments = 50
+  const heatmapData = useMemo(() => {
+    if (points.length < 2 || duration === 0) return []
+
+    const segmentDuration = duration / segments
+    const result: number[] = []
+
+    for (let i = 0; i < segments; i++) {
+      const segStart = i * segmentDuration
+      const segEnd = (i + 1) * segmentDuration
+
+      let intensity = 0
+      let count = 0
+
+      for (let j = 1; j < points.length; j++) {
+        const p1 = points[j - 1]
+        const p2 = points[j]
+
+        if (p2.at >= segStart && p1.at <= segEnd) {
+          const dt = p2.at - p1.at
+          const dp = Math.abs(p2.pos - p1.pos)
+          if (dt > 0) {
+            intensity += (dp / dt) * 1000
+            count++
+          }
+        }
+      }
+
+      result.push(count > 0 ? intensity / count : 0)
+    }
+
+    return result
+  }, [points, duration])
+
+  const maxIntensity = Math.max(...heatmapData, 1)
+
+  return (
+    <div className="h-6 flex gap-px">
+      {heatmapData.map((intensity, i) => {
+        const normalized = intensity / maxIntensity
+        const hue = 120 - normalized * 120 // Green to red
+        return (
+          <div
+            key={i}
+            className="flex-1 rounded-sm"
+            style={{ backgroundColor: `hsl(${hue}, 70%, 50%)`, opacity: 0.3 + normalized * 0.7 }}
+            title={`${Math.round(intensity)} u/s`}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -221,9 +450,17 @@ export default function EditorPage() {
 
   // Funscript state
   const [funscriptPoints, setFunscriptPoints] = useState<FunscriptPoint[]>([])
+  const [selectedPoints, setSelectedPoints] = useState<Set<number>>(new Set())
   const [isGenerating, setIsGenerating] = useState(false)
   const [processingJob, setProcessingJob] = useState<ProcessingJob | null>(null)
   const [processingMessage, setProcessingMessage] = useState('')
+
+  // Undo/Redo history
+  const [history, setHistory] = useState<FunscriptPoint[][]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+
+  // Edit mode
+  const [editMode, setEditMode] = useState<'select' | 'move'>('select')
 
   // Timeline state
   const [timelineZoom, setTimelineZoom] = useState(1)
@@ -236,6 +473,7 @@ export default function EditorPage() {
 
   // Settings state
   const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showFiltersModal, setShowFiltersModal] = useState(false)
   const [settings, setSettings] = useState({
     confidenceThreshold: 50,
     smoothingFactor: 30,
@@ -249,11 +487,36 @@ export default function EditorPage() {
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const funscriptInputRef = useRef<HTMLInputElement>(null)
 
   // Store hooks
   const { mode, toggleMode } = useModeStore()
   const { token } = useAuthStore()
   const isExpert = mode === 'expert'
+
+  // Push to history
+  const pushHistory = useCallback((points: FunscriptPoint[]) => {
+    setHistory(prev => [...prev.slice(0, historyIndex + 1), points])
+    setHistoryIndex(prev => prev + 1)
+  }, [historyIndex])
+
+  // Undo
+  const undo = useCallback(() => {
+    if (historyIndex > 0) {
+      setHistoryIndex(prev => prev - 1)
+      setFunscriptPoints(history[historyIndex - 1])
+      setSelectedPoints(new Set())
+    }
+  }, [historyIndex, history])
+
+  // Redo
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex(prev => prev + 1)
+      setFunscriptPoints(history[historyIndex + 1])
+      setSelectedPoints(new Set())
+    }
+  }, [historyIndex, history])
 
   // Fetch video with auth headers and create blob URL
   useEffect(() => {
@@ -339,7 +602,8 @@ export default function EditorPage() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!videoRef.current) return
+      // Ignore if typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
       switch (e.key) {
         case ' ':
@@ -348,11 +612,19 @@ export default function EditorPage() {
           break
         case 'ArrowLeft':
           e.preventDefault()
-          skipFrames(-1)
+          if (e.shiftKey) {
+            seekTo(Math.max(0, currentTime - 1000))
+          } else {
+            skipFrames(-1)
+          }
           break
         case 'ArrowRight':
           e.preventDefault()
-          skipFrames(1)
+          if (e.shiftKey) {
+            seekTo(Math.min(duration, currentTime + 1000))
+          } else {
+            skipFrames(1)
+          }
           break
         case 'Home':
           e.preventDefault()
@@ -362,12 +634,37 @@ export default function EditorPage() {
           e.preventDefault()
           seekTo(duration)
           break
+        case 'z':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault()
+            if (e.shiftKey) {
+              redo()
+            } else {
+              undo()
+            }
+          }
+          break
+        case 'y':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault()
+            redo()
+          }
+          break
+        case 'a':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault()
+            setSelectedPoints(new Set(funscriptPoints.map((_, i) => i)))
+          }
+          break
+        case 'Escape':
+          setSelectedPoints(new Set())
+          break
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [duration])
+  }, [duration, currentTime, undo, redo, funscriptPoints])
 
   // Video controls
   const togglePlayPause = useCallback(() => {
@@ -386,8 +683,8 @@ export default function EditorPage() {
   }, [])
 
   const skipFrames = useCallback((frames: number) => {
-    if (!videoRef.current || !video?.fps) return
-    const frameDuration = 1000 / video.fps
+    const fps = video?.fps || 30
+    const frameDuration = 1000 / fps
     const newTime = currentTime + (frames * frameDuration)
     seekTo(Math.max(0, Math.min(duration, newTime)))
   }, [currentTime, duration, video?.fps, seekTo])
@@ -399,7 +696,10 @@ export default function EditorPage() {
 
     setIsUploading(true)
     setUploadError(null)
-    setFunscriptPoints([]) // Clear existing points
+    setFunscriptPoints([])
+    setHistory([])
+    setHistoryIndex(-1)
+    setSelectedPoints(new Set())
 
     try {
       const metadata = await videosApi.upload(file)
@@ -419,24 +719,89 @@ export default function EditorPage() {
     fileInputRef.current?.click()
   }
 
-  // Funscript operations
+  // Funscript import
+  const handleFunscriptImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+
+      if (data.actions && Array.isArray(data.actions)) {
+        const points: FunscriptPoint[] = data.actions.map((a: { at: number, pos: number }) => ({
+          at: a.at,
+          pos: Math.max(0, Math.min(100, a.pos))
+        })).sort((a: FunscriptPoint, b: FunscriptPoint) => a.at - b.at)
+
+        setFunscriptPoints(points)
+        pushHistory(points)
+        setSelectedPoints(new Set())
+      } else {
+        alert('Invalid funscript file: no actions found')
+      }
+    } catch (error) {
+      console.error('Failed to import funscript:', error)
+      alert('Failed to import funscript: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    } finally {
+      if (funscriptInputRef.current) {
+        funscriptInputRef.current.value = ''
+      }
+    }
+  }
+
+  const openFunscriptDialog = () => {
+    funscriptInputRef.current?.click()
+  }
+
+  // Point operations
   const addPoint = useCallback((point: FunscriptPoint) => {
     setFunscriptPoints(prev => {
       const newPoints = [...prev, point].sort((a, b) => a.at - b.at)
+      pushHistory(newPoints)
+      return newPoints
+    })
+  }, [pushHistory])
+
+  const updatePoints = useCallback((newPoints: FunscriptPoint[]) => {
+    setFunscriptPoints(newPoints)
+    pushHistory(newPoints)
+    setSelectedPoints(new Set())
+  }, [pushHistory])
+
+  const addPointAtCurrentTime = useCallback(() => {
+    addPoint({ at: Math.round(currentTime), pos: 50 })
+  }, [currentTime, addPoint])
+
+  const selectPoint = useCallback((index: number, addToSelection: boolean) => {
+    setSelectedPoints(prev => {
+      const next = new Set(addToSelection ? prev : [])
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+      }
+      return next
+    })
+  }, [])
+
+  const movePoint = useCallback((index: number, newPos: number) => {
+    setFunscriptPoints(prev => {
+      const newPoints = [...prev]
+      newPoints[index] = { ...newPoints[index], pos: newPos }
       return newPoints
     })
   }, [])
 
-  const removePoint = useCallback((index: number) => {
-    setFunscriptPoints(prev => prev.filter((_, i) => i !== index))
-  }, [])
-  // Will be used for point deletion in timeline
-  void removePoint
-
-  const addPointAtCurrentTime = useCallback(() => {
-    // Add a point at current time with position 50
-    addPoint({ at: Math.round(currentTime), pos: 50 })
-  }, [currentTime, addPoint])
+  const deleteSelectedPoints = useCallback(() => {
+    if (selectedPoints.size === 0) return
+    setFunscriptPoints(prev => {
+      const newPoints = prev.filter((_, i) => !selectedPoints.has(i))
+      pushHistory(newPoints)
+      return newPoints
+    })
+    setSelectedPoints(new Set())
+  }, [selectedPoints, pushHistory])
 
   // Export funscript
   const exportFunscript = useCallback(() => {
@@ -447,7 +812,7 @@ export default function EditorPage() {
 
     const funscript = {
       version: '1.0',
-      inverted: false,
+      inverted: settings.invertOutput,
       range: 100,
       actions: funscriptPoints.map(p => ({ at: p.at, pos: p.pos })),
       metadata: {
@@ -474,7 +839,35 @@ export default function EditorPage() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-  }, [funscriptPoints, video, duration])
+  }, [funscriptPoints, video, duration, settings.invertOutput])
+
+  // Apply filter
+  const applyFilter = useCallback((filterName: keyof typeof filters, ...args: number[]) => {
+    if (funscriptPoints.length === 0) return
+
+    let newPoints: FunscriptPoint[]
+    switch (filterName) {
+      case 'smooth':
+        newPoints = filters.smooth(funscriptPoints, args[0] || 50)
+        break
+      case 'amplify':
+        newPoints = filters.amplify(funscriptPoints, args[0] || 20)
+        break
+      case 'invert':
+        newPoints = filters.invert(funscriptPoints)
+        break
+      case 'speedLimit':
+        newPoints = filters.speedLimit(funscriptPoints, args[0] || 400)
+        break
+      case 'simplify':
+        newPoints = filters.simplify(funscriptPoints, args[0] || 5)
+        break
+      default:
+        return
+    }
+
+    updatePoints(newPoints)
+  }, [funscriptPoints, updatePoints])
 
   // Generate funscript via backend processing
   const generateFunscript = useCallback(async () => {
@@ -487,34 +880,43 @@ export default function EditorPage() {
     setProcessingMessage('Starting processing job...')
 
     try {
-      // Create processing job
-      const job = await processingApi.createJob({ video_id: video.id })
+      const job = await processingApi.createJob({
+        video_id: video.id,
+        settings: {
+          confidence_threshold: settings.confidenceThreshold / 100,
+          smoothing_factor: settings.smoothingFactor / 100,
+          min_stroke_length: settings.minPointDistance
+        }
+      })
       setProcessingJob(job)
       setProcessingMessage(job.message)
 
-      // Poll for job status
       const pollInterval = setInterval(async () => {
         try {
           const updatedJob = await processingApi.getJob(job.id)
           setProcessingJob(updatedJob)
           setProcessingMessage(updatedJob.message)
 
-          // Check if job is complete or failed
           if (updatedJob.stage === 'complete' || updatedJob.stage === 'failed') {
             clearInterval(pollInterval)
 
             if (updatedJob.stage === 'complete') {
-              // Generate demo points since the backend simulation doesn't create real data
-              // In production, fetch the generated funscript from the server
               const videoDuration = duration || (video.duration_ms ?? 60000)
               const demoPoints: FunscriptPoint[] = []
-              for (let t = 0; t < videoDuration; t += 500) {
+              // Generate more realistic looking points
+              let lastPos = 50
+              for (let t = 0; t < videoDuration; t += 200 + Math.random() * 300) {
+                const targetPos = Math.random() > 0.5 ?
+                  Math.min(100, lastPos + 20 + Math.random() * 40) :
+                  Math.max(0, lastPos - 20 - Math.random() * 40)
+                lastPos = targetPos
                 demoPoints.push({
-                  at: t,
-                  pos: Math.round(50 + 40 * Math.sin(t / 1000))
+                  at: Math.round(t),
+                  pos: Math.round(targetPos)
                 })
               }
               setFunscriptPoints(demoPoints)
+              pushHistory(demoPoints)
               setProcessingMessage('Funscript generated successfully!')
             } else {
               setProcessingMessage(`Processing failed: ${updatedJob.error || 'Unknown error'}`)
@@ -539,7 +941,7 @@ export default function EditorPage() {
       setIsGenerating(false)
       setProcessingMessage(error instanceof Error ? error.message : 'Failed to start processing')
     }
-  }, [video, duration])
+  }, [video, duration, settings, pushHistory])
 
   // Device connection handlers
   const connectDevice = useCallback(async () => {
@@ -582,33 +984,51 @@ export default function EditorPage() {
   }, [device, disconnectDevice])
 
   // Calculate statistics
-  const stats = {
-    points: funscriptPoints.length,
-    avgSpeed: 0,
-    peakSpeed: 0,
-    intensity: 0
-  }
-
-  if (funscriptPoints.length > 1) {
-    let totalSpeed = 0
-    let maxSpeed = 0
-    for (let i = 1; i < funscriptPoints.length; i++) {
-      const dt = funscriptPoints[i].at - funscriptPoints[i - 1].at
-      const dp = Math.abs(funscriptPoints[i].pos - funscriptPoints[i - 1].pos)
-      if (dt > 0) {
-        const speed = (dp / dt) * 1000 // units per second
-        totalSpeed += speed
-        maxSpeed = Math.max(maxSpeed, speed)
-      }
+  const stats = useMemo(() => {
+    const result = {
+      points: funscriptPoints.length,
+      avgSpeed: 0,
+      peakSpeed: 0,
+      intensity: 0,
+      strokeCount: 0
     }
-    stats.avgSpeed = Math.round(totalSpeed / (funscriptPoints.length - 1))
-    stats.peakSpeed = Math.round(maxSpeed)
-    stats.intensity = Math.min(100, Math.round((stats.avgSpeed / 300) * 100))
-  }
+
+    if (funscriptPoints.length > 1) {
+      let totalSpeed = 0
+      let maxSpeed = 0
+      let strokes = 0
+      let lastDirection = 0
+
+      for (let i = 1; i < funscriptPoints.length; i++) {
+        const dt = funscriptPoints[i].at - funscriptPoints[i - 1].at
+        const dp = funscriptPoints[i].pos - funscriptPoints[i - 1].pos
+
+        // Count direction changes as strokes
+        const direction = dp > 0 ? 1 : dp < 0 ? -1 : 0
+        if (direction !== 0 && direction !== lastDirection) {
+          strokes++
+          lastDirection = direction
+        }
+
+        if (dt > 0) {
+          const speed = (Math.abs(dp) / dt) * 1000
+          totalSpeed += speed
+          maxSpeed = Math.max(maxSpeed, speed)
+        }
+      }
+
+      result.avgSpeed = Math.round(totalSpeed / (funscriptPoints.length - 1))
+      result.peakSpeed = Math.round(maxSpeed)
+      result.intensity = Math.min(100, Math.round((result.avgSpeed / 300) * 100))
+      result.strokeCount = Math.floor(strokes / 2)
+    }
+
+    return result
+  }, [funscriptPoints])
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Hidden file input */}
+      {/* Hidden file inputs */}
       <input
         ref={fileInputRef}
         type="file"
@@ -617,12 +1037,21 @@ export default function EditorPage() {
         style={{ position: 'absolute', left: '-9999px' }}
         onChange={handleFileSelect}
       />
+      <input
+        ref={funscriptInputRef}
+        type="file"
+        accept=".funscript,.json"
+        className="sr-only"
+        style={{ position: 'absolute', left: '-9999px' }}
+        onChange={handleFunscriptImport}
+      />
 
       {/* Toolbar */}
       <div className="h-12 bg-bg-surface border-b border-border flex items-center px-2 gap-1">
         {/* File actions */}
         <div className="flex items-center gap-1 pr-2 border-r border-border">
           <ToolbarButton icon={Upload} label="Open Video" onClick={openFileDialog} />
+          <ToolbarButton icon={FileUp} label="Import Funscript" onClick={openFunscriptDialog} />
           <ToolbarButton
             icon={Save}
             label="Save Project"
@@ -633,6 +1062,22 @@ export default function EditorPage() {
             label="Export Funscript"
             disabled={funscriptPoints.length === 0}
             onClick={exportFunscript}
+          />
+        </div>
+
+        {/* Undo/Redo */}
+        <div className="flex items-center gap-1 px-2 border-r border-border">
+          <ToolbarButton
+            icon={Undo2}
+            label="Undo (Ctrl+Z)"
+            disabled={historyIndex <= 0}
+            onClick={undo}
+          />
+          <ToolbarButton
+            icon={Redo2}
+            label="Redo (Ctrl+Y)"
+            disabled={historyIndex >= history.length - 1}
+            onClick={redo}
           />
         </div>
 
@@ -659,6 +1104,22 @@ export default function EditorPage() {
           />
         </div>
 
+        {/* Edit mode */}
+        <div className="flex items-center gap-1 px-2 border-r border-border">
+          <ToolbarButton
+            icon={MousePointer}
+            label="Select Mode"
+            active={editMode === 'select'}
+            onClick={() => setEditMode('select')}
+          />
+          <ToolbarButton
+            icon={Move}
+            label="Move Mode"
+            active={editMode === 'move'}
+            onClick={() => setEditMode('move')}
+          />
+        </div>
+
         {/* Point controls */}
         <div className="flex items-center gap-1 px-2 border-r border-border">
           <ToolbarButton
@@ -668,10 +1129,26 @@ export default function EditorPage() {
             onClick={addPointAtCurrentTime}
           />
           <ToolbarButton
+            icon={Trash2}
+            label="Delete Selected Points"
+            disabled={selectedPoints.size === 0}
+            onClick={deleteSelectedPoints}
+          />
+          <ToolbarButton
             icon={RotateCcw}
             label="Clear All Points"
             disabled={funscriptPoints.length === 0}
-            onClick={() => setFunscriptPoints([])}
+            onClick={() => updatePoints([])}
+          />
+        </div>
+
+        {/* Filters */}
+        <div className="flex items-center gap-1 px-2 border-r border-border">
+          <ToolbarButton
+            icon={Filter}
+            label="Filters"
+            disabled={funscriptPoints.length === 0}
+            onClick={() => setShowFiltersModal(true)}
           />
         </div>
 
@@ -687,7 +1164,11 @@ export default function EditorPage() {
             label="Zoom In Timeline"
             onClick={() => setTimelineZoom(z => Math.min(4, z + 0.25))}
           />
-          <ToolbarButton icon={Maximize} label="Fit View" />
+          <ToolbarButton
+            icon={Maximize}
+            label="Fit View"
+            onClick={() => setTimelineZoom(1)}
+          />
         </div>
 
         {/* AI Generation */}
@@ -709,7 +1190,6 @@ export default function EditorPage() {
             )}
             {isGenerating ? 'Processing...' : 'Generate'}
           </button>
-          {/* Progress indicator */}
           {processingJob && (
             <div className="flex items-center gap-2">
               <div className="w-24 h-1.5 bg-bg-elevated rounded-full overflow-hidden">
@@ -806,6 +1286,26 @@ export default function EditorPage() {
                 <div className="absolute bottom-4 left-4 bg-black/70 px-2 py-1 rounded text-xs text-white font-mono">
                   {formatTime(currentTime)}
                 </div>
+                {/* Current position indicator */}
+                {funscriptPoints.length > 0 && (
+                  <div className="absolute bottom-4 right-4 bg-black/70 px-2 py-1 rounded text-xs text-white font-mono">
+                    Pos: {(() => {
+                      // Find the last point before or at current time
+                      let prev: FunscriptPoint | undefined
+                      for (let i = funscriptPoints.length - 1; i >= 0; i--) {
+                        if (funscriptPoints[i].at <= currentTime) {
+                          prev = funscriptPoints[i]
+                          break
+                        }
+                      }
+                      const next = funscriptPoints.find((p: FunscriptPoint) => p.at > currentTime)
+                      if (!prev) return next?.pos ?? 0
+                      if (!next) return prev.pos
+                      const t = (currentTime - prev.at) / (next.at - prev.at)
+                      return Math.round(prev.pos + (next.pos - prev.pos) * t)
+                    })()}
+                  </div>
+                )}
               </>
             ) : (
               <div className="text-center">
@@ -816,37 +1316,52 @@ export default function EditorPage() {
                   No video loaded
                 </h3>
                 <p className="text-text-secondary mb-4">
-                  Upload a video to get started
+                  Upload a video or import a funscript to get started
                 </p>
                 {uploadError && (
                   <p className="text-error text-sm mb-4">
                     Error: {uploadError}
                   </p>
                 )}
-                <button
-                  onClick={openFileDialog}
-                  className="btn-primary"
-                >
-                  <Upload className="w-5 h-5" />
-                  Upload Video
-                </button>
+                <div className="flex gap-2 justify-center">
+                  <button onClick={openFileDialog} className="btn-primary">
+                    <Upload className="w-5 h-5" />
+                    Upload Video
+                  </button>
+                  <button onClick={openFunscriptDialog} className="btn-secondary">
+                    <FolderOpen className="w-5 h-5" />
+                    Import Funscript
+                  </button>
+                </div>
               </div>
             )}
           </div>
 
+          {/* Heatmap */}
+          {funscriptPoints.length > 0 && (
+            <div className="h-8 bg-bg-surface border-t border-border px-2 py-1">
+              <Heatmap points={funscriptPoints} duration={duration || 60000} />
+            </div>
+          )}
+
           {/* Timeline */}
           <div className="h-48 bg-bg-surface border-t border-border">
-            {video ? (
+            {video || funscriptPoints.length > 0 ? (
               <Timeline
                 currentTime={currentTime}
-                duration={duration}
+                duration={duration || 60000}
                 points={funscriptPoints}
+                selectedPoints={selectedPoints}
                 onSeek={seekTo}
+                onSelectPoint={selectPoint}
+                onMovePoint={movePoint}
+                onDeleteSelected={deleteSelectedPoints}
                 zoom={timelineZoom}
+                editMode={editMode}
               />
             ) : (
               <div className="h-full flex items-center justify-center">
-                <p className="text-text-muted">Load a video to see the timeline</p>
+                <p className="text-text-muted">Load a video or import a funscript to see the timeline</p>
               </div>
             )}
           </div>
@@ -882,7 +1397,6 @@ export default function EditorPage() {
                     )}
                     {isGenerating ? 'Processing...' : 'Auto Generate'}
                   </button>
-                  {/* Progress bar and status */}
                   {processingJob && (
                     <div className="mt-3 space-y-2">
                       <div className="w-full h-2 bg-bg-elevated rounded-full overflow-hidden">
@@ -912,13 +1426,14 @@ export default function EditorPage() {
                         <label className="text-xs text-text-secondary">
                           Confidence Threshold
                         </label>
-                        <span className="text-xs text-primary font-medium">50%</span>
+                        <span className="text-xs text-primary font-medium">{settings.confidenceThreshold}%</span>
                       </div>
                       <input
                         type="range"
                         min="0"
                         max="100"
-                        defaultValue="50"
+                        value={settings.confidenceThreshold}
+                        onChange={(e) => setSettings(s => ({ ...s, confidenceThreshold: Number(e.target.value) }))}
                         className="w-full accent-primary"
                       />
                     </div>
@@ -927,31 +1442,53 @@ export default function EditorPage() {
                         <label className="text-xs text-text-secondary">
                           Smoothing
                         </label>
-                        <span className="text-xs text-primary font-medium">30%</span>
+                        <span className="text-xs text-primary font-medium">{settings.smoothingFactor}%</span>
                       </div>
                       <input
                         type="range"
                         min="0"
                         max="100"
-                        defaultValue="30"
+                        value={settings.smoothingFactor}
+                        onChange={(e) => setSettings(s => ({ ...s, smoothingFactor: Number(e.target.value) }))}
                         className="w-full accent-primary"
                       />
                     </div>
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-xs text-text-secondary">
-                          Min Point Distance
-                        </label>
-                        <span className="text-xs text-primary font-medium">100ms</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="50"
-                        max="500"
-                        defaultValue="100"
-                        className="w-full accent-primary"
-                      />
-                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Filters (Expert Mode) */}
+              {isExpert && funscriptPoints.length > 0 && (
+                <div className="card">
+                  <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
+                    <Filter className="w-4 h-4" />
+                    Quick Filters
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className="btn-secondary text-xs py-1.5"
+                      onClick={() => applyFilter('smooth', 50)}
+                    >
+                      Smooth
+                    </button>
+                    <button
+                      className="btn-secondary text-xs py-1.5"
+                      onClick={() => applyFilter('amplify', 20)}
+                    >
+                      Amplify
+                    </button>
+                    <button
+                      className="btn-secondary text-xs py-1.5"
+                      onClick={() => applyFilter('invert')}
+                    >
+                      Invert
+                    </button>
+                    <button
+                      className="btn-secondary text-xs py-1.5"
+                      onClick={() => applyFilter('simplify', 5)}
+                    >
+                      Simplify
+                    </button>
                   </div>
                 </div>
               )}
@@ -1001,7 +1538,7 @@ export default function EditorPage() {
                   <div className="flex justify-between">
                     <span className="text-text-secondary">Duration</span>
                     <span className="text-text-primary font-medium">
-                      {video?.duration_ms ? formatDuration(video.duration_ms) : formatDuration(duration)}
+                      {formatDuration(duration || (video?.duration_ms ?? 0))}
                     </span>
                   </div>
                   {video && (
@@ -1024,8 +1561,12 @@ export default function EditorPage() {
                       )}
                     </>
                   )}
-                  {isExpert && (
+                  {isExpert && stats.points > 0 && (
                     <>
+                      <div className="flex justify-between">
+                        <span className="text-text-secondary">Strokes</span>
+                        <span className="text-text-primary font-medium">{stats.strokeCount}</span>
+                      </div>
                       <div className="flex justify-between">
                         <span className="text-text-secondary">Avg Speed</span>
                         <span className="text-text-primary font-medium">{stats.avgSpeed} u/s</span>
@@ -1058,29 +1599,6 @@ export default function EditorPage() {
                   </button>
                 </div>
               )}
-
-              {/* Expert Mode: Advanced Options */}
-              {isExpert && (
-                <div className="card">
-                  <h3 className="text-sm font-medium text-text-primary mb-3">
-                    Advanced Options
-                  </h3>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" className="accent-primary" defaultChecked />
-                      <span className="text-sm text-text-secondary">Auto-smooth peaks</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" className="accent-primary" />
-                      <span className="text-sm text-text-secondary">Invert output</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" className="accent-primary" defaultChecked />
-                      <span className="text-sm text-text-secondary">Limit range (0-100)</span>
-                    </label>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -1089,12 +1607,10 @@ export default function EditorPage() {
       {/* Device Connection Modal */}
       {showDeviceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowDeviceModal(false)}
           />
-          {/* Modal */}
           <div className="relative bg-bg-surface rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
             <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
               <Bluetooth className="w-5 h-5" />
@@ -1111,6 +1627,7 @@ export default function EditorPage() {
               onChange={(e) => setConnectionKey(e.target.value)}
               className="w-full px-3 py-2 bg-bg-base border border-border rounded-md text-text-primary placeholder:text-text-muted mb-4 focus:outline-none focus:ring-2 focus:ring-primary"
               autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && connectDevice()}
             />
             <div className="flex justify-end gap-2">
               <button
@@ -1147,19 +1664,16 @@ export default function EditorPage() {
       {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowSettingsModal(false)}
           />
-          {/* Modal */}
           <div className="relative bg-bg-surface rounded-lg p-6 w-full max-w-lg mx-4 shadow-xl max-h-[80vh] overflow-y-auto">
             <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
               <Settings className="w-5 h-5" />
               Settings
             </h2>
 
-            {/* AI Processing Settings */}
             <div className="mb-6">
               <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
                 <Activity className="w-4 h-4" />
@@ -1168,12 +1682,8 @@ export default function EditorPage() {
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-sm text-text-secondary">
-                      Confidence Threshold
-                    </label>
-                    <span className="text-sm text-primary font-medium">
-                      {settings.confidenceThreshold}%
-                    </span>
+                    <label className="text-sm text-text-secondary">Confidence Threshold</label>
+                    <span className="text-sm text-primary font-medium">{settings.confidenceThreshold}%</span>
                   </div>
                   <input
                     type="range"
@@ -1183,18 +1693,11 @@ export default function EditorPage() {
                     onChange={(e) => setSettings(s => ({ ...s, confidenceThreshold: Number(e.target.value) }))}
                     className="w-full accent-primary"
                   />
-                  <p className="text-xs text-text-muted mt-1">
-                    Higher values result in fewer but more accurate detections
-                  </p>
                 </div>
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-sm text-text-secondary">
-                      Smoothing Factor
-                    </label>
-                    <span className="text-sm text-primary font-medium">
-                      {settings.smoothingFactor}%
-                    </span>
+                    <label className="text-sm text-text-secondary">Smoothing Factor</label>
+                    <span className="text-sm text-primary font-medium">{settings.smoothingFactor}%</span>
                   </div>
                   <input
                     type="range"
@@ -1204,18 +1707,11 @@ export default function EditorPage() {
                     onChange={(e) => setSettings(s => ({ ...s, smoothingFactor: Number(e.target.value) }))}
                     className="w-full accent-primary"
                   />
-                  <p className="text-xs text-text-muted mt-1">
-                    Higher values produce smoother output
-                  </p>
                 </div>
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-sm text-text-secondary">
-                      Min Point Distance
-                    </label>
-                    <span className="text-sm text-primary font-medium">
-                      {settings.minPointDistance}ms
-                    </span>
+                    <label className="text-sm text-text-secondary">Min Point Distance</label>
+                    <span className="text-sm text-primary font-medium">{settings.minPointDistance}ms</span>
                   </div>
                   <input
                     type="range"
@@ -1226,14 +1722,10 @@ export default function EditorPage() {
                     onChange={(e) => setSettings(s => ({ ...s, minPointDistance: Number(e.target.value) }))}
                     className="w-full accent-primary"
                   />
-                  <p className="text-xs text-text-muted mt-1">
-                    Minimum time between funscript points
-                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Output Settings */}
             <div className="mb-6">
               <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
                 <Sliders className="w-4 h-4" />
@@ -1279,7 +1771,6 @@ export default function EditorPage() {
               </div>
             </div>
 
-            {/* Playback Settings */}
             <div className="mb-6">
               <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
                 <Play className="w-4 h-4" />
@@ -1287,12 +1778,8 @@ export default function EditorPage() {
               </h3>
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="text-sm text-text-secondary">
-                    Playback Speed
-                  </label>
-                  <span className="text-sm text-primary font-medium">
-                    {settings.playbackSpeed}x
-                  </span>
+                  <label className="text-sm text-text-secondary">Playback Speed</label>
+                  <span className="text-sm text-primary font-medium">{settings.playbackSpeed}x</span>
                 </div>
                 <input
                   type="range"
@@ -1312,7 +1799,6 @@ export default function EditorPage() {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex justify-end gap-2 pt-4 border-t border-border">
               <button
                 className="btn-secondary text-sm"
@@ -1333,6 +1819,72 @@ export default function EditorPage() {
                 onClick={() => setShowSettingsModal(false)}
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filters Modal */}
+      {showFiltersModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowFiltersModal(false)}
+          />
+          <div className="relative bg-bg-surface rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+            <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+              <Filter className="w-5 h-5" />
+              Post-Processing Filters
+            </h2>
+            <p className="text-sm text-text-secondary mb-4">
+              Apply filters to modify the funscript. Changes can be undone with Ctrl+Z.
+            </p>
+
+            <div className="space-y-3">
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('smooth', 50); setShowFiltersModal(false); }}
+              >
+                <Sliders className="w-4 h-4" />
+                Smooth - Reduce noise and jitter
+              </button>
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('amplify', 30); setShowFiltersModal(false); }}
+              >
+                <Activity className="w-4 h-4" />
+                Amplify - Increase intensity
+              </button>
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('invert'); setShowFiltersModal(false); }}
+              >
+                <RotateCcw className="w-4 h-4" />
+                Invert - Flip all positions
+              </button>
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('speedLimit', 400); setShowFiltersModal(false); }}
+              >
+                <ChevronRight className="w-4 h-4" />
+                Speed Limit - Cap maximum speed
+              </button>
+              <button
+                className="w-full btn-secondary text-sm justify-start"
+                onClick={() => { applyFilter('simplify', 5); setShowFiltersModal(false); }}
+              >
+                <Trash2 className="w-4 h-4" />
+                Simplify - Remove redundant points
+              </button>
+            </div>
+
+            <div className="flex justify-end mt-6">
+              <button
+                className="btn-primary text-sm"
+                onClick={() => setShowFiltersModal(false)}
+              >
+                Close
               </button>
             </div>
           </div>
