@@ -68,7 +68,7 @@ export const projectsApi = {
 
 // Videos API
 export const videosApi = {
-  upload: async (file: File, onProgress?: (progress: number) => void) => {
+  upload: async (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
 
