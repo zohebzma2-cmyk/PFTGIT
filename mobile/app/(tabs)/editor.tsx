@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,11 @@ import * as Haptics from 'expo-haptics';
 import Svg, { Path, Line, Circle, Polyline } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEditorStore } from '../../store/editorStore';
+import { useDeviceStore, syncFunscriptToDevice } from '../../store/deviceStore';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { DeviceSelector } from '../../components/DeviceSelector';
+import { getDeviceFeatureDescription } from '../../data/deviceDatabase';
 import colors from '../../constants/colors';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -44,6 +47,30 @@ function UploadIcon({ color = colors.text.primary, size = 24 }) {
       <Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <Path d="M17 8l-5-5-5 5" />
       <Path d="M12 3v12" />
+    </Svg>
+  );
+}
+
+function BluetoothIcon({ color = colors.text.primary, size = 24 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
+      <Path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11" />
+    </Svg>
+  );
+}
+
+function PlusIcon({ color = colors.text.primary, size = 24 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
+      <Path d="M12 5v14M5 12h14" />
+    </Svg>
+  );
+}
+
+function ZapIcon({ color = colors.text.primary, size = 24 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
+      <Path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
     </Svg>
   );
 }
@@ -127,6 +154,8 @@ function Timeline({
 
 export default function EditorScreen() {
   const videoRef = useRef<Video>(null);
+  const [deviceSelectorVisible, setDeviceSelectorVisible] = useState(false);
+  const [syncEnabled, setSyncEnabled] = useState(false);
 
   const {
     videoUri,
@@ -143,6 +172,17 @@ export default function EditorScreen() {
     addPoint,
     setProcessing,
   } = useEditorStore();
+
+  const { connectedDevice, setConnectedDevice, disconnect } = useDeviceStore();
+
+  // Sync funscript to device during playback
+  useEffect(() => {
+    if (syncEnabled && isPlaying && connectedDevice && points.length > 0) {
+      const timestamps = points.map(p => p.at);
+      const positions = points.map(p => p.pos);
+      syncFunscriptToDevice(timestamps, positions, currentTime);
+    }
+  }, [syncEnabled, isPlaying, connectedDevice, points, currentTime]);
 
   const handlePickVideo = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -395,7 +435,72 @@ export default function EditorScreen() {
             </View>
           </View>
         </Card>
+
+        {/* Device Status */}
+        <Card style={styles.deviceCard}>
+          <Text style={styles.sectionTitle}>Device</Text>
+          {connectedDevice ? (
+            <View style={styles.deviceContent}>
+              <View style={styles.deviceInfo}>
+                <View style={styles.deviceHeader}>
+                  <BluetoothIcon color={colors.status.success} size={20} />
+                  <Text style={styles.deviceName}>{connectedDevice.name}</Text>
+                  <View style={styles.connectedBadge}>
+                    <Text style={styles.connectedBadgeText}>Connected</Text>
+                  </View>
+                </View>
+                <Text style={styles.deviceDetails}>
+                  {connectedDevice.manufacturer} • {getDeviceFeatureDescription(connectedDevice.features)}
+                </Text>
+                {connectedDevice.batteryLevel !== undefined && (
+                  <Text style={styles.deviceBattery}>
+                    Battery: {connectedDevice.batteryLevel}%
+                  </Text>
+                )}
+              </View>
+              <View style={styles.deviceActions}>
+                <TouchableOpacity
+                  style={[styles.syncButton, syncEnabled && styles.syncButtonActive]}
+                  onPress={() => setSyncEnabled(!syncEnabled)}
+                >
+                  <ZapIcon color={syncEnabled ? colors.bg.base : colors.primary.DEFAULT} size={18} />
+                  <Text style={[styles.syncButtonText, syncEnabled && styles.syncButtonTextActive]}>
+                    {syncEnabled ? 'Syncing' : 'Sync'}
+                  </Text>
+                </TouchableOpacity>
+                <Button
+                  title="Change"
+                  size="sm"
+                  variant="outline"
+                  onPress={() => setDeviceSelectorVisible(true)}
+                />
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.addDeviceButton}
+              onPress={() => setDeviceSelectorVisible(true)}
+            >
+              <View style={styles.addDeviceIcon}>
+                <PlusIcon color={colors.primary.DEFAULT} size={24} />
+              </View>
+              <View style={styles.addDeviceText}>
+                <Text style={styles.addDeviceTitle}>Add Device</Text>
+                <Text style={styles.addDeviceSubtitle}>
+                  Connect Lovense, Kiiroo, We-Vibe & more
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        </Card>
       </ScrollView>
+
+      <DeviceSelector
+        visible={deviceSelectorVisible}
+        onClose={() => setDeviceSelectorVisible(false)}
+        onDeviceConnected={setConnectedDevice}
+        connectedDevice={connectedDevice}
+      />
     </SafeAreaView>
   );
 }
@@ -528,5 +633,104 @@ const styles = StyleSheet.create({
   },
   uploadButtons: {
     gap: 12,
+  },
+  deviceCard: {
+    padding: 16,
+  },
+  deviceContent: {
+    gap: 12,
+  },
+  deviceInfo: {
+    gap: 4,
+  },
+  deviceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  deviceName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text.primary,
+    flex: 1,
+  },
+  connectedBadge: {
+    backgroundColor: colors.status.success + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  connectedBadgeText: {
+    color: colors.status.success,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  deviceDetails: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    marginLeft: 28,
+  },
+  deviceBattery: {
+    fontSize: 12,
+    color: colors.text.muted,
+    marginLeft: 28,
+  },
+  deviceActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary.DEFAULT,
+  },
+  syncButtonActive: {
+    backgroundColor: colors.primary.DEFAULT,
+  },
+  syncButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary.DEFAULT,
+  },
+  syncButtonTextActive: {
+    color: colors.bg.base,
+  },
+  addDeviceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    backgroundColor: colors.bg.elevated,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border.DEFAULT,
+    borderStyle: 'dashed',
+  },
+  addDeviceIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary.dim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addDeviceText: {
+    flex: 1,
+  },
+  addDeviceTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  addDeviceSubtitle: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    marginTop: 2,
   },
 });
