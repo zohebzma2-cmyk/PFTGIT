@@ -45,7 +45,8 @@ import {
   Waves,
   SplitSquareVertical,
   PanelRightClose,
-  PanelRightOpen
+  PanelRightOpen,
+  Search
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useModeStore } from '@/store/modeStore'
@@ -1435,6 +1436,17 @@ export default function EditorPage() {
   const [showDeviceModal, setShowDeviceModal] = useState(false)
   const [connectionKey, setConnectionKey] = useState('')
   const [isConnecting, setIsConnecting] = useState(false)
+  const [deviceType, setDeviceType] = useState<'handy' | 'bluetooth'>('handy')
+  const [isScanning, setIsScanning] = useState(false)
+  const [discoveredDevices, setDiscoveredDevices] = useState<Array<{ id: string; name: string; type: string }>>([])
+  const [bluetoothSupported, setBluetoothSupported] = useState(false)
+
+  // Check Bluetooth support on mount
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'bluetooth' in navigator) {
+      setBluetoothSupported(true)
+    }
+  }, [])
 
   // Settings state
   const [showSettingsModal, setShowSettingsModal] = useState(false)
@@ -2298,7 +2310,7 @@ export default function EditorPage() {
   }, [video, duration, settings, pushHistory])
 
   // Device connection handlers
-  const connectDevice = useCallback(async () => {
+  const connectHandyDevice = useCallback(async () => {
     if (!connectionKey.trim()) {
       alert('Please enter a connection key')
       return
@@ -2310,6 +2322,7 @@ export default function EditorPage() {
       setDevice(connectedDevice)
       setShowDeviceModal(false)
       setConnectionKey('')
+      setDiscoveredDevices([])
     } catch (error) {
       console.error('Failed to connect device:', error)
       alert(error instanceof Error ? error.message : 'Failed to connect device')
@@ -2318,12 +2331,119 @@ export default function EditorPage() {
     }
   }, [connectionKey])
 
+  // Scan for Bluetooth devices using Web Bluetooth API
+  const scanBluetoothDevices = useCallback(async () => {
+    if (!bluetoothSupported) {
+      alert('Bluetooth is not supported in this browser. Please use Chrome, Edge, or Opera.')
+      return
+    }
+
+    setIsScanning(true)
+    setDiscoveredDevices([])
+
+    try {
+      // Request Bluetooth device with filters for common device services
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          'battery_service',
+          'device_information',
+          'generic_access',
+          // Common vibration device services
+          '0000fff0-0000-1000-8000-00805f9b34fb', // Common custom service
+          '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // Nordic UART Service
+        ]
+      })
+
+      if (device) {
+        setDiscoveredDevices([{
+          id: device.id,
+          name: device.name || 'Unknown Device',
+          type: 'bluetooth'
+        }])
+      }
+    } catch (error) {
+      if ((error as Error).name !== 'NotFoundError') {
+        console.error('Bluetooth scan error:', error)
+        alert('Failed to scan for devices. Make sure Bluetooth is enabled.')
+      }
+    } finally {
+      setIsScanning(false)
+    }
+  }, [bluetoothSupported])
+
+  // Connect to a discovered Bluetooth device
+  const connectBluetoothDevice = useCallback(async (deviceInfo: { id: string; name: string }) => {
+    setIsConnecting(true)
+    try {
+      // Request the device again to get a fresh connection
+      const btDevice = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          'battery_service',
+          'device_information',
+          'generic_access',
+          '0000fff0-0000-1000-8000-00805f9b34fb',
+          '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+        ]
+      })
+
+      if (btDevice) {
+        const server = await btDevice.gatt?.connect()
+
+        // Try to get battery level if available
+        let batteryLevel: number | undefined
+        try {
+          const batteryService = await server?.getPrimaryService('battery_service')
+          const batteryChar = await batteryService?.getCharacteristic('battery_level')
+          const batteryValue = await batteryChar?.readValue()
+          batteryLevel = batteryValue?.getUint8(0)
+        } catch {
+          // Battery service not available
+        }
+
+        const connectedDevice: Device = {
+          id: btDevice.id,
+          type: 'bluetooth',
+          name: btDevice.name || 'Bluetooth Device',
+          status: 'connected',
+          connection_key: null,
+          firmware_version: null,
+          last_error: null,
+          bluetooth_id: btDevice.id,
+          battery_level: batteryLevel,
+          features: ['vibrate']
+        }
+
+        setDevice(connectedDevice)
+        setShowDeviceModal(false)
+        setDiscoveredDevices([])
+
+        // Listen for disconnect
+        btDevice.addEventListener('gattserverdisconnected', () => {
+          setDevice(null)
+        })
+      }
+    } catch (error) {
+      console.error('Failed to connect Bluetooth device:', error)
+      alert(error instanceof Error ? error.message : 'Failed to connect device')
+    } finally {
+      setIsConnecting(false)
+    }
+  }, [])
+
   const disconnectDevice = useCallback(async () => {
     if (!device) return
 
     try {
-      await devicesApi.disconnect(device.id)
-      setDevice(null)
+      if (device.type === 'bluetooth' && device.bluetooth_id) {
+        // For Bluetooth devices, the connection is managed by the browser
+        // Just clear our state
+        setDevice(null)
+      } else {
+        await devicesApi.disconnect(device.id)
+        setDevice(null)
+      }
     } catch (error) {
       console.error('Failed to disconnect device:', error)
     }
@@ -2334,6 +2454,8 @@ export default function EditorPage() {
       disconnectDevice()
     } else {
       setShowDeviceModal(true)
+      setDeviceType('handy')
+      setDiscoveredDevices([])
     }
   }, [device, disconnectDevice])
 
@@ -3152,10 +3274,33 @@ export default function EditorPage() {
                     {device ? `${device.name} (${device.status})` : 'Disconnected'}
                   </span>
                 </div>
-                {device && device.firmware_version && (
-                  <p className="text-xs text-text-muted mt-1">
-                    Firmware: v{device.firmware_version}
-                  </p>
+                {device && (
+                  <div className="mt-2 space-y-1">
+                    <p className="text-xs text-text-muted flex items-center gap-2">
+                      <span className="text-text-disabled">Type:</span>
+                      <span className="capitalize">{device.type}</span>
+                    </p>
+                    {device.firmware_version && (
+                      <p className="text-xs text-text-muted flex items-center gap-2">
+                        <span className="text-text-disabled">Firmware:</span>
+                        <span>v{device.firmware_version}</span>
+                      </p>
+                    )}
+                    {device.battery_level !== undefined && (
+                      <p className="text-xs text-text-muted flex items-center gap-2">
+                        <span className="text-text-disabled">Battery:</span>
+                        <span className={device.battery_level < 20 ? 'text-status-error' : device.battery_level < 50 ? 'text-status-warning' : 'text-primary'}>
+                          {device.battery_level}%
+                        </span>
+                      </p>
+                    )}
+                    {device.features && device.features.length > 0 && (
+                      <p className="text-xs text-text-muted flex items-center gap-2">
+                        <span className="text-text-disabled">Features:</span>
+                        <span>{device.features.join(', ')}</span>
+                      </p>
+                    )}
+                  </div>
                 )}
                 <button
                   className="w-full btn-secondary mt-3 text-sm"
@@ -3285,49 +3430,185 @@ export default function EditorPage() {
           <div className="relative bg-bg-surface rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
             <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
               <Bluetooth className="w-5 h-5" />
-              Connect Handy Device
+              Connect Device
             </h2>
-            <p className="text-sm text-text-secondary mb-4">
-              Enter your Handy connection key to connect your device.
-              You can find this in the Handy app or at handyfeeling.com.
-            </p>
-            <input
-              type="text"
-              placeholder="Enter connection key (e.g., ABC123)"
-              value={connectionKey}
-              onChange={(e) => setConnectionKey(e.target.value)}
-              className="w-full px-3 py-2 bg-bg-base border border-border rounded-md text-text-primary placeholder:text-text-muted mb-4 focus:outline-none focus:ring-2 focus:ring-primary"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && connectDevice()}
-            />
-            <div className="flex justify-end gap-2">
+
+            {/* Device Type Tabs */}
+            <div className="flex gap-2 mb-4">
               <button
-                className="btn-secondary text-sm"
-                onClick={() => {
-                  setShowDeviceModal(false)
-                  setConnectionKey('')
-                }}
+                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                  deviceType === 'handy'
+                    ? 'bg-primary text-bg-base'
+                    : 'bg-bg-elevated text-text-secondary hover:text-text-primary'
+                }`}
+                onClick={() => setDeviceType('handy')}
               >
-                Cancel
+                Handy
               </button>
               <button
-                className="btn-primary text-sm"
-                onClick={connectDevice}
-                disabled={!connectionKey.trim() || isConnecting}
+                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                  deviceType === 'bluetooth'
+                    ? 'bg-primary text-bg-base'
+                    : 'bg-bg-elevated text-text-secondary hover:text-text-primary'
+                }`}
+                onClick={() => setDeviceType('bluetooth')}
               >
-                {isConnecting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  <>
-                    <Bluetooth className="w-4 h-4" />
-                    Connect
-                  </>
-                )}
+                Bluetooth
               </button>
             </div>
+
+            {/* Handy Connection */}
+            {deviceType === 'handy' && (
+              <>
+                <p className="text-sm text-text-secondary mb-4">
+                  Enter your Handy connection key to connect your device.
+                  You can find this in the Handy app or at handyfeeling.com.
+                </p>
+                <input
+                  type="text"
+                  placeholder="Enter connection key (e.g., ABC123)"
+                  value={connectionKey}
+                  onChange={(e) => setConnectionKey(e.target.value)}
+                  className="w-full px-3 py-2 bg-bg-base border border-border rounded-md text-text-primary placeholder:text-text-muted mb-4 focus:outline-none focus:ring-2 focus:ring-primary"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && connectHandyDevice()}
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    className="btn-secondary text-sm"
+                    onClick={() => {
+                      setShowDeviceModal(false)
+                      setConnectionKey('')
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-primary text-sm"
+                    onClick={connectHandyDevice}
+                    disabled={!connectionKey.trim() || isConnecting}
+                  >
+                    {isConnecting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      <>
+                        <Bluetooth className="w-4 h-4" />
+                        Connect
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Bluetooth Connection */}
+            {deviceType === 'bluetooth' && (
+              <>
+                {!bluetoothSupported ? (
+                  <div className="text-center py-6">
+                    <div className="w-12 h-12 rounded-full bg-status-error/20 flex items-center justify-center mx-auto mb-3">
+                      <Bluetooth className="w-6 h-6 text-status-error" />
+                    </div>
+                    <p className="text-sm text-text-secondary mb-2">
+                      Bluetooth is not supported in this browser.
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      Please use Chrome, Edge, or Opera on a desktop computer.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-text-secondary mb-4">
+                      Scan for nearby Bluetooth devices. Make sure your device is powered on and in pairing mode.
+                    </p>
+
+                    {/* Scan Button */}
+                    <button
+                      className="w-full btn-secondary text-sm mb-4 flex items-center justify-center gap-2"
+                      onClick={scanBluetoothDevices}
+                      disabled={isScanning}
+                    >
+                      {isScanning ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Scanning...
+                        </>
+                      ) : (
+                        <>
+                          <Search className="w-4 h-4" />
+                          Scan for Devices
+                        </>
+                      )}
+                    </button>
+
+                    {/* Discovered Devices */}
+                    {discoveredDevices.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs text-text-muted mb-2">Discovered Devices:</p>
+                        <div className="space-y-2">
+                          {discoveredDevices.map((dev) => (
+                            <button
+                              key={dev.id}
+                              className="w-full flex items-center gap-3 p-3 bg-bg-elevated rounded-md hover:bg-bg-highlight transition-colors"
+                              onClick={() => connectBluetoothDevice(dev)}
+                              disabled={isConnecting}
+                            >
+                              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                                <Bluetooth className="w-4 h-4 text-primary" />
+                              </div>
+                              <div className="flex-1 text-left">
+                                <p className="text-sm text-text-primary font-medium">{dev.name}</p>
+                                <p className="text-xs text-text-muted">{dev.type}</p>
+                              </div>
+                              {isConnecting ? (
+                                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-text-muted" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No devices found message */}
+                    {!isScanning && discoveredDevices.length === 0 && (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-text-muted">
+                          Click "Scan for Devices" to find nearby Bluetooth devices.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Supported Devices Info */}
+                    <div className="mt-4 p-3 bg-bg-elevated rounded-md">
+                      <p className="text-xs font-medium text-text-secondary mb-2">Supported Devices:</p>
+                      <ul className="text-xs text-text-muted space-y-1">
+                        <li>• Lovense devices (Lush, Max, Nora, etc.)</li>
+                        <li>• Kiiroo devices (Onyx, Pearl, etc.)</li>
+                        <li>• We-Vibe devices</li>
+                        <li>• Any BLE-compatible vibration device</li>
+                      </ul>
+                    </div>
+                  </>
+                )}
+
+                <div className="flex justify-end gap-2 mt-4">
+                  <button
+                    className="btn-secondary text-sm"
+                    onClick={() => {
+                      setShowDeviceModal(false)
+                      setDiscoveredDevices([])
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

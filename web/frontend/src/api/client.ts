@@ -242,12 +242,16 @@ export interface ProcessingJobCreate {
 
 export interface Device {
   id: string
-  type: string
+  type: 'handy' | 'bluetooth' | 'buttplug'
   name: string
-  status: string
+  status: 'disconnected' | 'connecting' | 'connected' | 'syncing' | 'error'
   connection_key: string | null
   firmware_version: string | null
   last_error: string | null
+  // Bluetooth-specific properties
+  bluetooth_id?: string
+  battery_level?: number
+  features?: string[]
 }
 
 export interface DeviceSyncRequest {
