@@ -341,7 +341,7 @@ export function DeviceSelector({ visible, onClose, onDeviceConnected, connectedD
           title="Add Your Device"
           onPress={() => setStep('manufacturer')}
           fullWidth
-          leftIcon={<PlusIcon color="#FFFFFF" size={20} />}
+          icon={<PlusIcon color="#FFFFFF" size={20} />}
         />
 
         {connectedDevice && (
