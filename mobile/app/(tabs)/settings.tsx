@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,11 @@ import { useRouter } from 'expo-router';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useAuthStore } from '../../store/authStore';
 import { useEditorStore } from '../../store/editorStore';
+import { useDeviceStore, ConnectedDevice } from '../../store/deviceStore';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { DeviceSelector } from '../../components/DeviceSelector';
+import { getDeviceFeatureDescription } from '../../data/deviceDatabase';
 import colors from '../../constants/colors';
 
 // Icons
@@ -95,6 +98,27 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { user, isAuthenticated, logout } = useAuthStore();
   const { settings, setSettings } = useEditorStore();
+  const { connectedDevice, setConnectedDevice, disconnect } = useDeviceStore();
+  const [deviceSelectorVisible, setDeviceSelectorVisible] = useState(false);
+
+  const handleDeviceConnected = (device: ConnectedDevice) => {
+    setConnectedDevice(device);
+  };
+
+  const handleDisconnectDevice = () => {
+    Alert.alert(
+      'Disconnect Device',
+      `Are you sure you want to disconnect ${connectedDevice?.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: () => disconnect(),
+        },
+      ]
+    );
+  };
 
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
@@ -213,12 +237,48 @@ export default function SettingsScreen() {
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>Device</Text>
 
-          <SettingRow
-            icon={<BluetoothIcon color={colors.primary.DEFAULT} />}
-            title="Connect Device"
-            subtitle="Handy, Buttplug.io compatible"
-            onPress={() => Alert.alert('Coming Soon', 'Device connectivity will be available in the next update.')}
-          />
+          {connectedDevice ? (
+            <>
+              <SettingRow
+                icon={<BluetoothIcon color={colors.status.success} />}
+                title={connectedDevice.name}
+                subtitle={`${connectedDevice.manufacturer} • ${getDeviceFeatureDescription(connectedDevice.features)}`}
+                rightElement={
+                  <View style={styles.connectedBadge}>
+                    <Text style={styles.connectedBadgeText}>Connected</Text>
+                  </View>
+                }
+              />
+              {connectedDevice.batteryLevel !== undefined && (
+                <SettingRow
+                  icon={<InfoIcon color={colors.primary.DEFAULT} />}
+                  title="Battery Level"
+                  subtitle={`${connectedDevice.batteryLevel}%`}
+                />
+              )}
+              <View style={styles.deviceButtons}>
+                <Button
+                  title="Change Device"
+                  variant="outline"
+                  onPress={() => setDeviceSelectorVisible(true)}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title="Disconnect"
+                  variant="outline"
+                  onPress={handleDisconnectDevice}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </>
+          ) : (
+            <SettingRow
+              icon={<BluetoothIcon color={colors.primary.DEFAULT} />}
+              title="Add Device"
+              subtitle="200+ supported devices from Lovense, Kiiroo, We-Vibe, and more"
+              onPress={() => setDeviceSelectorVisible(true)}
+            />
+          )}
         </Card>
 
         {/* About Section */}
@@ -244,6 +304,13 @@ export default function SettingsScreen() {
           />
         </Card>
       </ScrollView>
+
+      <DeviceSelector
+        visible={deviceSelectorVisible}
+        onClose={() => setDeviceSelectorVisible(false)}
+        onDeviceConnected={handleDeviceConnected}
+        connectedDevice={connectedDevice}
+      />
     </SafeAreaView>
   );
 }
@@ -304,5 +371,21 @@ const styles = StyleSheet.create({
   },
   authButtons: {
     gap: 12,
+  },
+  connectedBadge: {
+    backgroundColor: colors.status.success + '20',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  connectedBadgeText: {
+    color: colors.status.success,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  deviceButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
   },
 });
