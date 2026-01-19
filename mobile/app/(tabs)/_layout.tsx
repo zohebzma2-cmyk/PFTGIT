@@ -22,6 +22,14 @@ function EditIcon({ color, size = 24 }: { color: string; size?: number }) {
   );
 }
 
+function LibraryIcon({ color, size = 24 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
+      <Path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </Svg>
+  );
+}
+
 function SettingsIcon({ color, size = 24 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
@@ -70,6 +78,13 @@ export default function TabLayout() {
         options={{
           title: 'Editor',
           tabBarIcon: ({ color }) => <EditIcon color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="library"
+        options={{
+          title: 'Library',
+          tabBarIcon: ({ color }) => <LibraryIcon color={color} />,
         }}
       />
       <Tabs.Screen
