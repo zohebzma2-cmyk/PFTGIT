@@ -5,6 +5,7 @@ import Layout from './components/Layout'
 import HomePage from './pages/HomePage'
 import EditorPage from './pages/EditorPage'
 import ProjectsPage from './pages/ProjectsPage'
+import SettingsPage from './pages/SettingsPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 
@@ -118,6 +119,7 @@ function App() {
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="editor" element={<EditorPage />} />
             <Route path="editor/:projectId" element={<EditorPage />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
       </AuthProvider>

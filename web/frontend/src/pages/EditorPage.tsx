@@ -1,4 +1,33 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+
+// Web Bluetooth API type declarations
+declare global {
+  interface Navigator {
+    bluetooth: {
+      requestDevice(options: {
+        acceptAllDevices?: boolean
+        filters?: Array<{ namePrefix?: string; services?: string[] }>
+        optionalServices?: string[]
+      }): Promise<BluetoothDevice>
+    }
+  }
+  interface BluetoothDevice {
+    id: string
+    name?: string
+    gatt?: BluetoothRemoteGATTServer
+    addEventListener(type: 'gattserverdisconnected', listener: () => void): void
+  }
+  interface BluetoothRemoteGATTServer {
+    connect(): Promise<BluetoothRemoteGATTServer>
+    getPrimaryService(service: string): Promise<BluetoothRemoteGATTService>
+  }
+  interface BluetoothRemoteGATTService {
+    getCharacteristic(characteristic: string): Promise<BluetoothRemoteGATTCharacteristic>
+  }
+  interface BluetoothRemoteGATTCharacteristic {
+    readValue(): Promise<DataView>
+  }
+}
 import {
   Upload,
   Play,
@@ -2373,7 +2402,7 @@ export default function EditorPage() {
   }, [bluetoothSupported])
 
   // Connect to a discovered Bluetooth device
-  const connectBluetoothDevice = useCallback(async (deviceInfo: { id: string; name: string }) => {
+  const connectBluetoothDevice = useCallback(async (_deviceInfo: { id: string; name: string }) => {
     setIsConnecting(true)
     try {
       // Request the device again to get a fresh connection
@@ -2454,7 +2483,7 @@ export default function EditorPage() {
       disconnectDevice()
     } else {
       setShowDeviceModal(true)
-      setDeviceType('handy')
+      setDeviceType('bluetooth')
       setDiscoveredDevices([])
     }
   }, [device, disconnectDevice])

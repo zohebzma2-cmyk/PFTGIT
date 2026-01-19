@@ -15,6 +15,7 @@ import { useState } from 'react'
 const navItems = [
   { path: '/projects', icon: FolderOpen, label: 'Projects' },
   { path: '/editor', icon: Sliders, label: 'Editor' },
+  { path: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 export default function Layout() {
@@ -69,14 +70,15 @@ export default function Layout() {
 
         {/* Bottom actions */}
         <div className="p-2 border-t border-border space-y-1">
-          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors">
-            <Settings className="w-5 h-5" />
-            <span className="font-medium">Settings</span>
-          </button>
-          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors">
+          <a
+            href="https://github.com/anthropics/claude-code/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+          >
             <HelpCircle className="w-5 h-5" />
-            <span className="font-medium">Help</span>
-          </button>
+            <span className="font-medium">Help & Feedback</span>
+          </a>
         </div>
 
         {/* User menu */}
